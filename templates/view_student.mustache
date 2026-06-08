@@ -1,0 +1,109 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template mod_blerify/view_student
+
+    Student view for Blerify certificate activity.
+}}
+<div class="mod-blerify-student">
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+
+            <div class="text-center">
+                {{#is_assembled}}
+                    <div class="alert alert-success py-3 mb-2">
+                        <strong>{{#str}}claim_success, blerify{{/str}}</strong>
+                        <br/>
+                        <small>{{#str}}credential_assembled_desc, blerify{{/str}}</small>
+                    </div>
+                {{/is_assembled}}
+
+                {{#is_processing}}
+                    <div class="alert alert-info py-2 mb-2">
+                        <div class="spinner-border spinner-border-sm mr-1" role="status"></div>
+                        {{#str}}certificate_processing, blerify{{/str}}
+                    </div>
+                {{/is_processing}}
+
+                {{#is_error}}
+                    <div class="alert alert-danger py-3 mb-2">
+                        <strong>{{#str}}certificate_error, blerify{{/str}}</strong>
+                        {{#error_detail}}
+                            <br/>
+                            <small>{{ error_detail }}</small>
+                        {{/error_detail}}
+                    </div>
+                {{/is_error}}
+            </div>
+
+            {{^smtp_configured}}
+                <div class="alert alert-warning py-3 mb-2">
+                    <strong>{{#str}}smtp_not_configured_title, blerify{{/str}}</strong>
+                    <br/>
+                    {{#str}}smtp_not_configured_desc, blerify{{/str}}
+                </div>
+            {{/smtp_configured}}
+
+            {{#smtp_configured}}
+                <div class="text-center mb-3">
+                    <p class="mb-2" style="font-size:1.15em;font-weight:700;color:#333;">{{#str}}wallet_connect_desc_v2, blerify{{/str}}</p>
+
+                    <div class="my-3" id="blerify-qr-container">
+                        <img src="{{ qr_data_url }}" alt="QR Code" width="280" height="280"
+                             style="display:block; margin:0 auto; image-rendering:pixelated;" />
+                    </div>
+
+                    <div class="mb-2">
+                        <span id="blerify-qr-countdown" class="badge badge-secondary" style="font-size:.95em;"></span>
+                    </div>
+
+                    <div id="blerify-qr-expired" style="display:none;">
+                        <div class="alert alert-warning py-2 mb-2">
+                            {{#str}}wallet_qr_expired, blerify{{/str}}
+                        </div>
+                        <a href="{{ resendotp_url }}" class="btn btn-primary">
+                            {{#str}}wallet_qr_refresh, blerify{{/str}}
+                        </a>
+                    </div>
+
+                    {{#resendotp_url}}
+                        <form method="post" action="{{ resendotp_url }}" class="mb-2">
+                            <input type="hidden" name="action" value="resendotp">
+                            <input type="hidden" name="sesskey" value="{{ sesskey }}">
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                {{#str}}otp_resend_btn, blerify{{/str}}
+                            </button>
+                        </form>
+                    {{/resendotp_url}}
+                </div>
+            {{/smtp_configured}}
+
+        </div>
+
+        <div class="card-footer text-center">
+            <p class="mb-2" style="font-size:.9em;">{{#str}}wallet_download_prompt, blerify{{/str}}</p>
+            <div class="d-flex justify-content-center align-items-center flex-wrap" style="gap:16px;">
+                <a href="{{ appstore_url }}" target="_blank" rel="noopener">
+                    <img src="{{ appstore_img }}" alt="{{#str}}wallet_download_ios, blerify{{/str}}" height="54" />
+                </a>
+                <a href="{{ playstore_url }}" target="_blank" rel="noopener">
+                    <img src="{{ playstore_img }}" alt="{{#str}}wallet_download_android, blerify{{/str}}" height="54" />
+                </a>
+            </div>
+        </div>
+    </div>
+</div>

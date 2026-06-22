@@ -51,10 +51,8 @@
             </div>
 
             {{^smtp_configured}}
-                <div class="alert alert-warning py-3 mb-2">
-                    <strong>{{#str}}smtp_not_configured_title, blerify{{/str}}</strong>
-                    <br/>
-                    {{#str}}smtp_not_configured_desc, blerify{{/str}}
+                <div class="alert alert-warning py-3 mb-2 text-center">
+                    {{#str}}smtp_not_configured, blerify{{/str}}
                 </div>
             {{/smtp_configured}}
 
@@ -94,16 +92,18 @@
 
         </div>
 
-        <div class="card-footer text-center">
-            <p class="mb-2" style="font-size:.9em;">{{#str}}wallet_download_prompt, blerify{{/str}}</p>
-            <div class="d-flex justify-content-center align-items-center flex-wrap" style="gap:16px;">
-                <a href="{{ appstore_url }}" target="_blank" rel="noopener">
-                    <img src="{{ appstore_img }}" alt="{{#str}}wallet_download_ios, blerify{{/str}}" height="54" />
-                </a>
-                <a href="{{ playstore_url }}" target="_blank" rel="noopener">
-                    <img src="{{ playstore_img }}" alt="{{#str}}wallet_download_android, blerify{{/str}}" height="54" />
-                </a>
+        {{#smtp_configured}}
+            <div class="card-footer text-center">
+                <p class="mb-2" style="font-size:.9em;">{{#str}}wallet_download_prompt, blerify{{/str}}</p>
+                <div class="d-flex justify-content-center align-items-center flex-wrap" style="gap:16px;">
+                    <a href="{{ appstore_url }}" target="_blank" rel="noopener">
+                        <img src="{{ appstore_img }}" alt="{{#str}}wallet_download_ios, blerify{{/str}}" height="54" />
+                    </a>
+                    <a href="{{ playstore_url }}" target="_blank" rel="noopener">
+                        <img src="{{ playstore_img }}" alt="{{#str}}wallet_download_android, blerify{{/str}}" height="54" />
+                    </a>
+                </div>
             </div>
-        </div>
+        {{/smtp_configured}}
     </div>
 </div>

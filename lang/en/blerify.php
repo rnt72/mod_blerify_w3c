@@ -155,6 +155,7 @@ $string['wallet_otp_label'] = 'Verification code';
 $string['wallet_did_current'] = 'Your current DID: {$a}';
 $string['otp_also_sent_email'] = 'Also sent to your email';
 $string['otp_resend_btn'] = 'Resend verification code';
+$string['smtp_not_configured'] = 'SMTP email not configured, please contact the administrator';
 $string['smtp_not_configured_title'] = 'Email service not configured';
 $string['smtp_not_configured_desc'] = 'The SMTP email service must be enabled to issue credentials, as the verification code is sent by email. Please contact the site administrator.';
 $string['otp_resent'] = 'A new verification code has been sent to your email.';

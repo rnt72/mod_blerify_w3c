@@ -269,7 +269,7 @@ if (has_capability('mod/blerify:manage', $context)) {
         }
     }
 
-    if (!$templatedata['is_processing']) {
+    if (!$templatedata['is_processing'] && $smtpconfigured) {
         $ticket = $ticketmanager->get_or_create_ticket($USER->id, $blerify->id);
 
         $claimurl = $CFG->wwwroot . '/mod/blerify/walletclaim.php/' . $ticket['token'];
@@ -282,18 +282,11 @@ if (has_capability('mod/blerify:manage', $context)) {
         if ($ticket['is_new']) {
             $templatedata['otp'] = $ticket['otp'];
 
-            $previousconsumed = $DB->count_records_select(
-                'blerify_wallet_tickets',
-                'userid = :userid AND blerifyid = :blerifyid AND consumed = 1',
-                ['userid' => $USER->id, 'blerifyid' => $blerify->id]
-            );
-            if ($previousconsumed == 0) {
-                require_once($CFG->dirroot . '/mod/blerify/locallib.php');
-                $emailsubject = get_string('otp_email_subject', 'blerify');
-                $emailbody = get_string('otp_email_body', 'blerify', $ticket['otp']);
-                $emailhtml = blerify_get_otp_email_html($ticket['otp']);
-                email_to_user($USER, \core_user::get_noreply_user(), $emailsubject, $emailbody, $emailhtml);
-            }
+            require_once($CFG->dirroot . '/mod/blerify/locallib.php');
+            $emailsubject = get_string('otp_email_subject', 'blerify');
+            $emailbody = get_string('otp_email_body', 'blerify', $ticket['otp']);
+            $emailhtml = blerify_get_otp_email_html($ticket['otp']);
+            email_to_user($USER, \core_user::get_noreply_user(), $emailsubject, $emailbody, $emailhtml);
         }
 
         $templatedata['resendotp_url'] = (new moodle_url('/mod/blerify/view.php', ['id' => $cm->id]))->out(false);

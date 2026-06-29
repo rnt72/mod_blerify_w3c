@@ -88,6 +88,7 @@ $string['eventclaimsucceeded'] = 'Wallet claim succeeded';
 $string['eventdidlinked'] = 'Wallet DID linked';
 $string['eventcredentialissuedmanual'] = 'Credential issued manually';
 $string['eventcredentialreissued'] = 'Credential reissued';
+$string['eventcredentialissuancefailed'] = 'Credential issuance failed';
 
 // Privacy.
 $string['privacy:metadata:blerify_credentials'] = 'Information about Blerify digital credentials issued to users';

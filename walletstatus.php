@@ -46,7 +46,7 @@ if (!$cm) {
 }
 
 $context = context_module::instance($cm->id);
-if (!is_enrolled($context, $USER->id)) {
+if (!is_enrolled($context, $USER->id, '', true)) {
     echo json_encode(['status' => 'none']);
     exit;
 }

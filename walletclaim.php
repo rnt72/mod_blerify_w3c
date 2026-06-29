@@ -182,7 +182,7 @@ if (!$config) {
 $claimcm = get_coursemodule_from_instance('blerify', $blerifyid);
 $claimcontext = $claimcm ? \context_module::instance($claimcm->id) : \context_system::instance();
 
-if (!$claimcm || !is_enrolled($claimcontext, $userid)) {
+if (!$claimcm || !is_enrolled($claimcontext, $userid, '', true)) {
     http_response_code(403);
     echo json_encode(['data' => ['success' => false, 'message' => 'not_enrolled']]);
     exit;
@@ -240,6 +240,11 @@ try {
     ]]);
 
 } catch (\Exception $e) {
+    \mod_blerify\event\credential_issuance_failed::create([
+        'context' => $claimcontext,
+        'relateduserid' => $userid,
+    ])->trigger();
+
     http_response_code(500);
     echo json_encode(['data' => [
         'success' => false,

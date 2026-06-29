@@ -50,13 +50,13 @@
                 {{/is_error}}
             </div>
 
-            {{^smtp_configured}}
+            {{#show_smtp_warning}}
                 <div class="alert alert-warning py-3 mb-2 text-center">
                     {{#str}}smtp_not_configured, blerify{{/str}}
                 </div>
-            {{/smtp_configured}}
+            {{/show_smtp_warning}}
 
-            {{#smtp_configured}}
+            {{#show_claim}}
                 <div class="text-center mb-3">
                     <p class="mb-2" style="font-size:1.15em;font-weight:700;color:#333;">{{#str}}wallet_connect_desc_v2, blerify{{/str}}</p>
 
@@ -88,11 +88,11 @@
                         </form>
                     {{/resendotp_url}}
                 </div>
-            {{/smtp_configured}}
+            {{/show_claim}}
 
         </div>
 
-        {{#smtp_configured}}
+        {{#show_claim}}
             <div class="card-footer text-center">
                 <p class="mb-2" style="font-size:.9em;">{{#str}}wallet_download_prompt, blerify{{/str}}</p>
                 <div class="d-flex justify-content-center align-items-center flex-wrap" style="gap:16px;">
@@ -104,6 +104,6 @@
                     </a>
                 </div>
             </div>
-        {{/smtp_configured}}
+        {{/show_claim}}
     </div>
 </div>

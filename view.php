@@ -271,7 +271,11 @@ if (has_capability('mod/blerify:manage', $context)) {
         }
     }
 
-    if (!$templatedata['is_processing'] && $smtpconfigured) {
+    $needsclaim = !$templatedata['is_assembled'] && !$templatedata['is_processing'];
+    $templatedata['show_claim'] = $needsclaim && $smtpconfigured;
+    $templatedata['show_smtp_warning'] = $needsclaim && !$smtpconfigured;
+
+    if ($templatedata['show_claim']) {
         $ticket = $ticketmanager->get_or_create_ticket($USER->id, $blerify->id);
 
         $claimurl = $CFG->wwwroot . '/mod/blerify/walletclaim.php/' . $ticket['token'];

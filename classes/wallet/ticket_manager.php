@@ -34,6 +34,15 @@ class ticket_manager {
     /** @var int Maximum failed OTP attempts before lockout. */
     const MAX_ATTEMPTS = 5;
 
+    /** @var int Failed attempts (per user/activity) before backoff begins. */
+    const LOCKOUT_THRESHOLD = 5;
+
+    /** @var int Base lockout duration in seconds. */
+    const LOCKOUT_BASE = 60;
+
+    /** @var int Maximum lockout duration in seconds. */
+    const LOCKOUT_MAX = 3600;
+
     /**
      * Get an existing valid ticket or create a new one.
      *
@@ -110,6 +119,46 @@ class ticket_manager {
     }
 
     /**
+     * Issue a fresh OTP for the current valid ticket, keeping the same token.
+     *
+     * Preserves the QR/deeplink and expiry window; only the OTP changes. Falls
+     * back to creating a ticket when none is currently valid.
+     *
+     * @param int $userid The Moodle user ID.
+     * @param int $blerifyid The blerify activity ID.
+     * @return array {token, otp, expires_at, is_new}
+     */
+    public function resend_otp(int $userid, int $blerifyid): array {
+        global $DB;
+
+        $now = time();
+        $sql = "SELECT * FROM {blerify_wallet_tickets}
+                 WHERE userid = :userid AND blerifyid = :blerifyid
+                   AND consumed = 0 AND expires_at > :now
+                 ORDER BY timecreated DESC";
+        $existing = $DB->get_record_sql($sql, [
+            'userid' => $userid,
+            'blerifyid' => $blerifyid,
+            'now' => $now,
+        ], IGNORE_MULTIPLE);
+
+        if (!$existing) {
+            return $this->create_ticket($userid, $blerifyid);
+        }
+
+        $otp = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        $existing->otp = password_hash($otp, PASSWORD_DEFAULT);
+        $DB->update_record('blerify_wallet_tickets', $existing);
+
+        return [
+            'token' => $existing->token,
+            'otp' => $otp,
+            'expires_at' => (int)$existing->expires_at,
+            'is_new' => false,
+        ];
+    }
+
+    /**
      * Validate a claim from the wallet app.
      *
      * @param string $token The ticket token from the deeplink.
@@ -133,13 +182,26 @@ class ticket_manager {
             return ['success' => false, 'error' => 'token_expired'];
         }
 
-        if ($ticket->attempts >= self::MAX_ATTEMPTS) {
-            return ['success' => false, 'error' => 'too_many_attempts'];
+        if ($this->is_locked((int)$ticket->userid, (int)$ticket->blerifyid)) {
+            return [
+                'success' => false,
+                'error' => 'too_many_attempts',
+                'userid' => (int)$ticket->userid,
+                'blerifyid' => (int)$ticket->blerifyid,
+                'locked' => true,
+            ];
         }
 
         if (empty($otp) || !password_verify($otp, $ticket->otp)) {
             $DB->set_field('blerify_wallet_tickets', 'attempts', $ticket->attempts + 1, ['id' => $ticket->id]);
-            return ['success' => false, 'error' => 'invalid_otp'];
+            $locked = $this->register_failure((int)$ticket->userid, (int)$ticket->blerifyid);
+            return [
+                'success' => false,
+                'error' => 'invalid_otp',
+                'userid' => (int)$ticket->userid,
+                'blerifyid' => (int)$ticket->blerifyid,
+                'locked' => $locked,
+            ];
         }
 
         $transaction = $DB->start_delegated_transaction();
@@ -162,11 +224,91 @@ class ticket_manager {
             return ['success' => false, 'error' => 'token_already_used'];
         }
 
+        $this->clear_lockout((int)$ticket->userid, (int)$ticket->blerifyid);
+
         return [
             'success' => true,
             'userid' => (int)$ticket->userid,
             'blerifyid' => (int)$ticket->blerifyid,
         ];
+    }
+
+    /**
+     * Check whether a user is currently locked out for an activity.
+     *
+     * @param int $userid
+     * @param int $blerifyid
+     * @return bool
+     */
+    public function is_locked(int $userid, int $blerifyid): bool {
+        global $DB;
+
+        $record = $DB->get_record('blerify_wallet_lockouts', [
+            'userid' => $userid,
+            'blerifyid' => $blerifyid,
+        ]);
+
+        return $record && (int)$record->lockeduntil > time();
+    }
+
+    /**
+     * Register a failed attempt and apply backoff once the threshold is reached.
+     *
+     * @param int $userid
+     * @param int $blerifyid
+     * @return bool True when the user is now locked out.
+     */
+    public function register_failure(int $userid, int $blerifyid): bool {
+        global $DB;
+
+        $now = time();
+        $record = $DB->get_record('blerify_wallet_lockouts', [
+            'userid' => $userid,
+            'blerifyid' => $blerifyid,
+        ]);
+
+        if (!$record) {
+            $record = new \stdClass();
+            $record->userid = $userid;
+            $record->blerifyid = $blerifyid;
+            $record->failcount = 0;
+            $record->lockeduntil = 0;
+            $record->lastfailtime = 0;
+            $record->timecreated = $now;
+            $record->timemodified = $now;
+            $record->id = $DB->insert_record('blerify_wallet_lockouts', $record);
+        }
+
+        $record->failcount++;
+        $record->lastfailtime = $now;
+        $record->timemodified = $now;
+
+        $locked = false;
+        if ($record->failcount >= self::LOCKOUT_THRESHOLD) {
+            $exponent = $record->failcount - self::LOCKOUT_THRESHOLD;
+            $duration = min(self::LOCKOUT_BASE * (2 ** $exponent), self::LOCKOUT_MAX);
+            $record->lockeduntil = $now + $duration;
+            $locked = true;
+        }
+
+        $DB->update_record('blerify_wallet_lockouts', $record);
+
+        return $locked;
+    }
+
+    /**
+     * Clear the lockout state for a user/activity after a successful claim.
+     *
+     * @param int $userid
+     * @param int $blerifyid
+     */
+    public function clear_lockout(int $userid, int $blerifyid): void {
+        global $DB;
+
+        $DB->delete_records('blerify_wallet_lockouts', [
+            'userid' => $userid,
+            'blerifyid' => $blerifyid,
+        ]);
     }
 
     /**

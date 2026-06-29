@@ -49,6 +49,12 @@ if ($action === 'save' && data_submitted() && confirm_sesskey()) {
     $data->courseid = required_param('courseid', PARAM_INT);
     $data->timemodified = time();
 
+    $uuidpattern = '/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/';
+    if (!preg_match($uuidpattern, $data->projectid) || !preg_match($uuidpattern, $data->templateid)) {
+        redirect(new moodle_url('/mod/blerify/adminmanage.php'),
+            get_string('error_invalid_uuid', 'blerify'), null, \core\output\notification::NOTIFY_ERROR);
+    }
+
     $editid = optional_param('editid', 0, PARAM_INT);
 
     if (!$DB->record_exists('course', ['id' => $data->courseid])) {
@@ -187,9 +193,9 @@ if (empty($configs)) {
 
         $actions = html_writer::link($editurl, get_string('edit'), ['class' => 'btn btn-sm btn-outline-primary mr-1']);
         $actions .= ' ';
-        $confirmMsg = addslashes_js(get_string('config_delete_confirm', 'blerify'));
         $actions .= html_writer::link($deleteurl, get_string('delete'),
-            ['class' => 'btn btn-sm btn-outline-danger', 'onclick' => "return confirm('" . $confirmMsg . "');"]);
+            ['class' => 'btn btn-sm btn-outline-danger blerify-delete-config',
+             'data-confirm' => get_string('config_delete_confirm', 'blerify')]);
 
         $table->data[] = [
             format_string($config->name),
@@ -201,5 +207,7 @@ if (empty($configs)) {
     }
     echo html_writer::table($table);
 }
+
+$PAGE->requires->js_call_amd('mod_blerify/admin_manage', 'init');
 
 echo $OUTPUT->footer();

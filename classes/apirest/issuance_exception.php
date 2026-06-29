@@ -15,18 +15,36 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version metadata for mod_blerify
+ * Exception thrown during the W3C issuance flow, carrying partial progress.
  *
  * @package    mod_blerify
  * @copyright  Blerify <dev@blerify.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+namespace mod_blerify\apirest;
+
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version   = 2026062600;
-$plugin->requires  = 2022041900;
-$plugin->cron      = 0;
-$plugin->component = 'mod_blerify';
-$plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = 'v0.5.2';
+class issuance_exception extends \Exception {
+
+    /** @var string|null Credential id created before the failure, if any. */
+    public $credentialid;
+
+    /** @var string Last lifecycle step reached before the failure. */
+    public $laststep;
+
+    /**
+     * Constructor.
+     *
+     * @param string $message
+     * @param string|null $credentialid
+     * @param string $laststep One of 'created', 'signed'.
+     * @param \Throwable|null $previous
+     */
+    public function __construct($message, $credentialid = null, $laststep = '', $previous = null) {
+        parent::__construct($message, 0, $previous);
+        $this->credentialid = $credentialid;
+        $this->laststep = $laststep;
+    }
+}

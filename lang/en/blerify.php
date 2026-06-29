@@ -34,6 +34,7 @@ $string['setting_service_account_json'] = 'Service Account JSON';
 $string['setting_service_account_json_desc'] = 'Upload your Blerify service account JSON file (e.g. service-account-SA2-sa-XXXXXXX.json). This file contains all the credentials needed: client_id, organization_id, private_key, token_uri, and iam_audience.';
 $string['setting_service_account_upload_help'] = 'Select a .json service account file to import.';
 $string['setting_service_account_current'] = 'Current service account (read-only):';
+$string['setting_service_account_configured'] = 'Service account imported successfully';
 $string['setting_service_account_invalid_json'] = 'The uploaded file does not contain valid JSON.';
 
 // Activity form.
@@ -80,6 +81,13 @@ $string['status_error'] = 'Error';
 
 // Events.
 $string['eventcertificatecreated'] = 'Blerify certificate created';
+$string['eventotpfailed'] = 'Wallet OTP attempt failed';
+$string['eventotplockout'] = 'Wallet OTP lockout';
+$string['eventclaimratelimited'] = 'Wallet claim rate limited';
+$string['eventclaimsucceeded'] = 'Wallet claim succeeded';
+$string['eventdidlinked'] = 'Wallet DID linked';
+$string['eventcredentialissuedmanual'] = 'Credential issued manually';
+$string['eventcredentialreissued'] = 'Credential reissued';
 
 // Privacy.
 $string['privacy:metadata:blerify_credentials'] = 'Information about Blerify digital credentials issued to users';
@@ -92,6 +100,10 @@ $string['privacy:metadata:blerify_wallet_dids:userid'] = 'The user ID of the wal
 $string['privacy:metadata:blerify_wallet_dids:did'] = 'The decentralized identifier of the user wallet';
 $string['privacy:metadata:blerify_wallet_tickets'] = 'Temporary tickets used for QR-based credential claiming';
 $string['privacy:metadata:blerify_wallet_tickets:userid'] = 'The user ID of the ticket holder';
+$string['privacy:metadata:blerify_wallet_lockouts'] = 'OTP lockout state to throttle wallet claim attempts';
+$string['privacy:metadata:blerify_wallet_lockouts:userid'] = 'The user ID subject to the lockout';
+$string['privacy:metadata:blerify_wallet_lockouts:failcount'] = 'The number of consecutive failed OTP attempts';
+$string['privacy:metadata:blerify_wallet_lockouts:lockeduntil'] = 'The time until which claiming is blocked';
 
 // Errors.
 $string['error_not_configured'] = 'Blerify plugin is not properly configured. Please contact the administrator.';
@@ -112,6 +124,7 @@ $string['no_configs'] = 'No certificate configurations have been created yet.';
 $string['error_no_config_for_course'] = 'No Blerify certificate configuration exists for this course. Please ask the administrator to configure one.';
 $string['error_course_not_found'] = 'The selected course was not found.';
 $string['error_course_already_configured'] = 'This course already has a Blerify certificate configuration.';
+$string['error_invalid_uuid'] = 'Project ID and Template ID must be valid UUIDs.';
 $string['unknowncourse'] = 'Unknown course';
 
 // Manual issuance.
@@ -159,6 +172,7 @@ $string['smtp_not_configured'] = 'SMTP email not configured, please contact the 
 $string['smtp_not_configured_title'] = 'Email service not configured';
 $string['smtp_not_configured_desc'] = 'The SMTP email service must be enabled to issue credentials, as the verification code is sent by email. Please contact the site administrator.';
 $string['otp_resent'] = 'A new verification code has been sent to your email.';
+$string['otp_email_failed'] = 'We could not send the verification code by email. Please try again.';
 $string['otp_email_subject'] = 'Blerify - Verification code';
 $string['otp_email_body'] = 'Your verification code to claim your Blerify credential is: {$a}. This code expires in 5 minutes.';
 $string['otp_email_html_title'] = 'Verification Code!';

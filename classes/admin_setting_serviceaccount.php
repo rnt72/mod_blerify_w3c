@@ -48,7 +48,7 @@ class admin_setting_serviceaccount extends admin_setting {
      * @return mixed
      */
     public function get_setting() {
-        return $this->config_read($this->name);
+        return \mod_blerify\local\service_account::get_raw();
     }
 
     /**
@@ -67,7 +67,7 @@ class admin_setting_serviceaccount extends admin_setting {
             return get_string('setting_service_account_invalid_json', 'blerify');
         }
 
-        $result = $this->config_write($this->name, $data);
+        $result = \mod_blerify\local\service_account::store($data);
         return ($result ? '' : get_string('errorsetting', 'admin'));
     }
 
@@ -96,12 +96,14 @@ class admin_setting_serviceaccount extends admin_setting {
         $html .= '</div>';
 
         if (!empty($current)) {
-            $preview = $this->build_preview($current);
-            $html .= '<div class="mb-2" id="' . $id . '_preview_wrapper">';
-            $html .= '<label>' . get_string('setting_service_account_current', 'blerify') . '</label>';
-            $html .= '<pre class="p-2 border rounded bg-light" '
-                    . 'style="max-height:220px;overflow:auto;font-size:0.85em;white-space:pre-wrap;">'
-                    . s($preview) . '</pre>';
+            $info = json_decode($current, true);
+            $clientid = (is_array($info) && isset($info['client_id'])) ? $info['client_id'] : '';
+            $label = get_string('setting_service_account_configured', 'blerify');
+            if ($clientid !== '') {
+                $label .= ' (' . $clientid . ')';
+            }
+            $html .= '<div class="mb-2">';
+            $html .= '<span class="badge badge-success">' . s($label) . '</span>';
             $html .= '</div>';
         }
 
@@ -109,9 +111,10 @@ class admin_setting_serviceaccount extends admin_setting {
             . '(function(){'
             . 'var fileInput=document.getElementById("' . $id . '_file");'
             . 'var hidden=document.getElementById("' . $id . '");'
+            . 'if(!fileInput||!hidden){return;}'
             . 'fileInput.addEventListener("change",function(){'
             .   'var file=fileInput.files[0];'
-            .   'if(!file)return;'
+            .   'if(!file){return;}'
             .   'var reader=new FileReader();'
             .   'reader.onload=function(e){hidden.value=e.target.result;};'
             .   'reader.readAsText(file);'
@@ -123,25 +126,5 @@ class admin_setting_serviceaccount extends admin_setting {
 
         return format_admin_setting($this, $this->visiblename, $html,
             $this->description, true, '', $default, $query);
-    }
-
-    /**
-     * Build a safe preview string with private_key truncated.
-     *
-     * @param string $json Raw JSON string.
-     * @return string Formatted preview.
-     */
-    private function build_preview($json) {
-        $data = json_decode($json, true);
-        if (!is_array($data)) {
-            return '(invalid JSON)';
-        }
-
-        if (isset($data['private_key'])) {
-            $pk = $data['private_key'];
-            $data['private_key'] = substr($pk, 0, 40) . '...(truncated)';
-        }
-
-        return json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
     }
 }

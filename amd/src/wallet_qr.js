@@ -9,6 +9,7 @@ define([], function() {
             var countdownEl = document.getElementById('blerify-qr-countdown');
             var consecutiveErrors = 0;
             var pollInterval = 5000;
+            var pollDeadline = config.expiresAt ? (config.expiresAt * 1000) : (Date.now() + 600000);
 
             if (countdownEl) {
                 countdownTimer = setInterval(function() {
@@ -38,6 +39,10 @@ define([], function() {
 
             if (!config.skipPolling) {
                 var doPoll = function() {
+                    if (Date.now() > pollDeadline) {
+                        clearInterval(pollTimer);
+                        return;
+                    }
                     var url = config.statusUrl +
                         '?sesskey=' + encodeURIComponent(config.sesskey) +
                         '&cmid=' + encodeURIComponent(config.cmid);
@@ -52,6 +57,10 @@ define([], function() {
                         consecutiveErrors = 0;
                         pollInterval = 5000;
                         if (data.status === 'assembled') {
+                            clearInterval(pollTimer);
+                            clearInterval(countdownTimer);
+                            window.location.href = config.refreshUrl;
+                        } else if (data.status === 'error') {
                             clearInterval(pollTimer);
                             clearInterval(countdownTimer);
                             window.location.href = config.refreshUrl;

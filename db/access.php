@@ -50,6 +50,7 @@ $capabilities = [
     ],
 
     'mod/blerify:manage' => [
+        'riskbitmask' => RISK_PERSONAL,
         'captype' => 'write',
         'contextlevel' => CONTEXT_MODULE,
         'archetypes' => [

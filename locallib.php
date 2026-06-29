@@ -205,13 +205,17 @@ function blerify_course_completed_handler($event) {
                     $certificateevent->trigger();
                 }
             } catch (\Exception $e) {
-                debugging('Blerify: Failed to issue credential for user ' . $user->id .
-                    ' in activity ' . $record->id . ': ' . $e->getMessage(), DEBUG_NORMAL);
+                debugging('Blerify: failed to issue credential for user ' . $user->id .
+                    ' in activity ' . $record->id, DEBUG_NORMAL);
+                debugging($e->getMessage(), DEBUG_DEVELOPER);
             }
         } else {
             $subject = get_string('completion_notification_subject', 'blerify');
             $body = get_string('completion_notification_body', 'blerify');
-            email_to_user($user, \core_user::get_noreply_user(), $subject, $body);
+            $sent = email_to_user($user, \core_user::get_noreply_user(), $subject, $body);
+            if (!$sent) {
+                debugging('Blerify: completion notification email failed for user ' . $user->id, DEBUG_NORMAL);
+            }
         }
     }
 }

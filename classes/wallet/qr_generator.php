@@ -37,9 +37,8 @@ class qr_generator {
     /**
      * Generate a branded QR code with the Blerify logo centered.
      *
-     * Uses TCPDF with error correction level H (30%) to allow the logo
-     * overlay without losing scannability. Falls back to core_qrcode
-     * if TCPDF2DBarcode is not available.
+     * Uses core_qrcode with error correction level H (30%) so the logo
+     * overlay does not break scannability.
      *
      * @param string $data The data to encode in the QR.
      * @return string Base64-encoded PNG image data.
@@ -49,18 +48,11 @@ class qr_generator {
 
         $logopath = $CFG->dirroot . '/mod/blerify/pix/blerify.png';
 
-        $tcpdfpath = $CFG->libdir . '/tcpdf/tcpdf_barcodes_2d.php';
-        if (file_exists($tcpdfpath)) {
-            require_once($tcpdfpath);
-            $qr = new \TCPDF2DBarcode($data, 'QRCODE,H');
-            $qrpng = $qr->getBarcodePngData(6, 6, self::BRAND_COLOR);
-        } else {
-            $qr = new \core_qrcode($data);
-            $qrpng = $qr->getBarcodePngData(6, 6);
-        }
+        $qr = new \core_qrcode($data, 'QRCODE,H');
+        $qrpng = $qr->getBarcodePngData(6, 6, self::BRAND_COLOR);
 
         if (empty($qrpng)) {
-            $qr = new \core_qrcode($data);
+            $qr = new \core_qrcode($data, 'QRCODE,H');
             return base64_encode($qr->getBarcodePngData(4, 4));
         }
 

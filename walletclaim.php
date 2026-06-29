@@ -39,7 +39,7 @@ header('X-Frame-Options: DENY');
 header('Cache-Control: no-store, no-cache, must-revalidate');
 header('Pragma: no-cache');
 
-$allowedorigins = ['https://demo.wallet.blerify.com', 'https://wallet.blerify.com', 'https://staging.blerify.com'];
+$allowedorigins = ['https://demo.wallet.blerify.com', 'https://wallet.blerify.com'];
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 if (in_array($origin, $allowedorigins, true)) {
     header('Access-Control-Allow-Origin: ' . $origin);
@@ -64,6 +64,10 @@ $ip = getremoteaddr();
 $ratelimitkey = 'walletclaim_' . sha1($ip);
 $attempts = (int)($cache->get($ratelimitkey) ?: 0);
 if ($attempts > 20) {
+    \mod_blerify\event\claim_rate_limited::create([
+        'context' => \context_system::instance(),
+        'other' => ['iphash' => sha1($ip)],
+    ])->trigger();
     http_response_code(429);
     echo json_encode(['data' => ['success' => false, 'message' => 'rate_limited']]);
     exit;
@@ -126,6 +130,20 @@ $manager = new ticket_manager();
 $result = $manager->validate_claim($token, $otp);
 
 if (!$result['success']) {
+    if (!empty($result['blerifyid'])) {
+        $cm = get_coursemodule_from_instance('blerify', $result['blerifyid']);
+        $eventcontext = $cm ? \context_module::instance($cm->id) : \context_system::instance();
+        $eventdata = [
+            'context' => $eventcontext,
+            'relateduserid' => $result['userid'],
+        ];
+        if (!empty($result['locked']) || $result['error'] === 'too_many_attempts') {
+            \mod_blerify\event\otp_lockout::create($eventdata)->trigger();
+        } else if ($result['error'] === 'invalid_otp') {
+            \mod_blerify\event\otp_failed::create($eventdata)->trigger();
+        }
+    }
+
     $httpcode = 403;
     if ($result['error'] === 'invalid_token') {
         $httpcode = 404;
@@ -161,23 +179,57 @@ if (!$config) {
     exit;
 }
 
+$claimcm = get_coursemodule_from_instance('blerify', $blerifyid);
+$claimcontext = $claimcm ? \context_module::instance($claimcm->id) : \context_system::instance();
+
+if (!$claimcm || !is_enrolled($claimcontext, $userid)) {
+    http_response_code(403);
+    echo json_encode(['data' => ['success' => false, 'message' => 'not_enrolled']]);
+    exit;
+}
+
 $credentialsmanager = new credentials();
 $existing = $credentialsmanager->get_credential_for_user($blerifyid, $userid);
+$wasassembled = ($existing && $existing->status === 'assembled');
 
 $transaction = $DB->start_delegated_transaction();
 try {
     $manager->store_did($userid, $didjwt);
+    $transaction->allow_commit();
+} catch (\Exception $e) {
+    try {
+        $transaction->rollback($e);
+    } catch (\Exception $ignored) {
+        $ignored = null;
+    }
+    http_response_code(500);
+    echo json_encode(['data' => ['success' => false, 'message' => 'did_store_failed']]);
+    exit;
+}
 
-    if ($existing && $existing->status === 'assembled') {
+\mod_blerify\event\did_linked::create([
+    'context' => $claimcontext,
+    'relateduserid' => $userid,
+])->trigger();
+
+try {
+    if ($existing) {
         $issueresult = $credentialsmanager->reissue_credential_w3c($blerify, $config, $user, $didjwt, $existing);
     } else {
-        if ($existing && in_array($existing->status, ['error', 'authorized'])) {
-            $DB->delete_records('blerify_credentials', ['id' => $existing->id]);
-        }
         $issueresult = $credentialsmanager->issue_credential_w3c($blerify, $config, $user, $didjwt);
     }
 
-    $transaction->allow_commit();
+    if ($wasassembled) {
+        \mod_blerify\event\credential_reissued::create([
+            'context' => $claimcontext,
+            'relateduserid' => $userid,
+        ])->trigger();
+    } else {
+        \mod_blerify\event\claim_succeeded::create([
+            'context' => $claimcontext,
+            'relateduserid' => $userid,
+        ])->trigger();
+    }
 
     $assembleraw = $issueresult['assemble_raw'] ?? '';
     http_response_code(200);
@@ -188,10 +240,6 @@ try {
     ]]);
 
 } catch (\Exception $e) {
-    try {
-        $transaction->rollback($e);
-    } catch (\Exception $ignored) {
-    }
     http_response_code(500);
     echo json_encode(['data' => [
         'success' => false,

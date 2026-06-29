@@ -57,11 +57,10 @@ class client {
         global $CFG;
         require_once($CFG->libdir . '/filelib.php');
 
-        $json = get_config('mod_blerify', 'service_account_json');
+        $sa = \mod_blerify\local\service_account::get_decoded();
 
-        if (!empty($json)) {
-            $sa = json_decode($json, true);
-            if (!$sa || !isset($sa['client_id']) || !isset($sa['private_key'])) {
+        if (!empty($sa)) {
+            if (!isset($sa['client_id']) || !isset($sa['private_key'])) {
                 throw new \moodle_exception('error_not_configured', 'blerify');
             }
 
@@ -93,8 +92,20 @@ class client {
             throw new \moodle_exception('error_not_configured', 'blerify');
         }
 
+        foreach ([$this->tokenuri, $this->apihost] as $checkurl) {
+            $parsedurl = parse_url((string)$checkurl);
+            if (empty($parsedurl['scheme']) || $parsedurl['scheme'] !== 'https'
+                    || empty($parsedurl['host']) || !self::host_allowed($parsedurl['host'])) {
+                throw new \moodle_exception('error_not_configured', 'blerify');
+            }
+        }
+
         $this->curl = $curl ? $curl : new \curl();
-        $this->curl->setopt(['CURLOPT_TIMEOUT' => 30]);
+        $this->curl->setopt([
+            'CURLOPT_TIMEOUT' => 30,
+            'CURLOPT_SSL_VERIFYPEER' => true,
+            'CURLOPT_SSL_VERIFYHOST' => 2,
+        ]);
         $this->error = null;
     }
 
@@ -173,6 +184,10 @@ class client {
         $postdata = http_build_query($postfields, '', '&');
 
         $authcurl = new \curl();
+        $authcurl->setopt([
+            'CURLOPT_SSL_VERIFYPEER' => true,
+            'CURLOPT_SSL_VERIFYHOST' => 2,
+        ]);
         $authcurl->setHeader('Content-Type: application/x-www-form-urlencoded');
         $response = $authcurl->post($this->tokenuri, $postdata);
 
@@ -237,5 +252,16 @@ class client {
 
     private static function base64url_encode($data) {
         return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+    }
+
+    /**
+     * Whether a host is within the allowed Blerify domain.
+     *
+     * @param string $host
+     * @return bool
+     */
+    private static function host_allowed($host) {
+        $host = strtolower($host);
+        return $host === 'blerify.com' || substr($host, -12) === '.blerify.com';
     }
 }

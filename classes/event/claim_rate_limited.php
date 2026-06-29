@@ -15,18 +15,42 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version metadata for mod_blerify
+ * Claim rate limited event for mod_blerify.
  *
  * @package    mod_blerify
  * @copyright  Blerify <dev@blerify.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+namespace mod_blerify\event;
+
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version   = 2026062600;
-$plugin->requires  = 2022041900;
-$plugin->cron      = 0;
-$plugin->component = 'mod_blerify';
-$plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = 'v0.5.2';
+class claim_rate_limited extends \core\event\base {
+
+    /**
+     * Init method.
+     */
+    protected function init() {
+        $this->data['crud'] = 'r';
+        $this->data['edulevel'] = self::LEVEL_OTHER;
+    }
+
+    /**
+     * Returns localised event name.
+     *
+     * @return string
+     */
+    public static function get_name() {
+        return get_string('eventclaimratelimited', 'blerify');
+    }
+
+    /**
+     * Returns event description.
+     *
+     * @return string
+     */
+    public function get_description() {
+        return "A wallet claim request was rate limited at the public endpoint.";
+    }
+}

@@ -61,13 +61,24 @@ class apirest {
         $createresponse = $this->create_credential($user, $templateid, $projectid, $walletdid);
 
         $credential = isset($createresponse->credential) ? $createresponse->credential : $createresponse;
+        if (!isset($createresponse->signingMessage) || !isset($credential->_id)) {
+            throw new \Exception('Failed to create credential: malformed response');
+        }
         $signingmessage = $createresponse->signingMessage;
         $credentialid = $credential->_id;
 
-        $signresult = $this->sign_credential($projectid, $credentialid, $signingmessage);
+        try {
+            $signresult = $this->sign_credential($projectid, $credentialid, $signingmessage);
+        } catch (\Exception $e) {
+            throw new issuance_exception($e->getMessage(), $credentialid, 'created', $e);
+        }
 
-        $assembleresponse = $this->assemble_credential($projectid, $credentialid, $templateid,
-            $signresult->signature, $signresult->publicKey);
+        try {
+            $assembleresponse = $this->assemble_credential($projectid, $credentialid, $templateid,
+                $signresult->signature, $signresult->publicKey);
+        } catch (\Exception $e) {
+            throw new issuance_exception($e->getMessage(), $credentialid, 'signed', $e);
+        }
 
         return [
             'credential_id' => $credentialid,
@@ -88,8 +99,8 @@ class apirest {
      * @throws \Exception
      */
     private function create_credential($user, $templateid, $projectid, $walletdid = null) {
-        $path = '/api/v1/organizations/' . $this->organizationid .
-                '/projects/' . $projectid . '/credentials';
+        $path = '/api/v1/organizations/' . rawurlencode($this->organizationid) .
+                '/projects/' . rawurlencode($projectid) . '/credentials';
 
         if (empty($walletdid)) {
             throw new \Exception('Cannot issue credential: student has not linked a wallet DID.');
@@ -135,16 +146,16 @@ class apirest {
      * @throws \Exception
      */
     private function sign_credential($projectid, $credentialid, $signingmessage) {
-        $path = '/api/v1/organizations/' . $this->organizationid .
-                '/projects/' . $projectid .
-                '/credentials/' . $credentialid . '/sign/custody';
+        $path = '/api/v1/organizations/' . rawurlencode($this->organizationid) .
+                '/projects/' . rawurlencode($projectid) .
+                '/credentials/' . rawurlencode($credentialid) . '/sign/custody';
 
         $body = [
             'signingMessage' => $signingmessage,
         ];
 
         $response = $this->client->put($path, $body);
-        if (!$response || !isset($response->signature)) {
+        if (!$response || !isset($response->signature) || !isset($response->publicKey)) {
             throw new \Exception('Failed to sign credential: invalid response');
         }
 
@@ -163,9 +174,9 @@ class apirest {
      * @throws \Exception
      */
     private function assemble_credential($projectid, $credentialid, $templateid, $signature, $publickey) {
-        $path = '/api/v1/organizations/' . $this->organizationid .
-                '/projects/' . $projectid .
-                '/credentials/' . $credentialid . '/assemble?keystore=keyvault';
+        $path = '/api/v1/organizations/' . rawurlencode($this->organizationid) .
+                '/projects/' . rawurlencode($projectid) .
+                '/credentials/' . rawurlencode($credentialid) . '/assemble?keystore=keyvault';
 
         $body = [
             'templateId' => $templateid,

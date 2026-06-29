@@ -61,6 +61,12 @@ class provider implements
             'userid' => 'privacy:metadata:blerify_wallet_tickets:userid',
         ], 'privacy:metadata:blerify_wallet_tickets');
 
+        $collection->add_database_table('blerify_wallet_lockouts', [
+            'userid' => 'privacy:metadata:blerify_wallet_lockouts:userid',
+            'failcount' => 'privacy:metadata:blerify_wallet_lockouts:failcount',
+            'lockeduntil' => 'privacy:metadata:blerify_wallet_lockouts:lockeduntil',
+        ], 'privacy:metadata:blerify_wallet_lockouts');
+
         return $collection;
     }
 
@@ -99,6 +105,19 @@ class provider implements
             'userid' => $userid,
         ]);
 
+        $sql = "SELECT ctx.id
+                  FROM {context} ctx
+                  JOIN {course_modules} cm ON cm.id = ctx.instanceid AND ctx.contextlevel = :contextlevel
+                  JOIN {modules} m ON m.id = cm.module AND m.name = 'blerify'
+                  JOIN {blerify} b ON b.id = cm.instance
+                  JOIN {blerify_wallet_lockouts} bl ON bl.blerifyid = b.id
+                 WHERE bl.userid = :userid";
+
+        $contextlist->add_from_sql($sql, [
+            'contextlevel' => CONTEXT_MODULE,
+            'userid' => $userid,
+        ]);
+
         return $contextlist;
     }
 
@@ -126,6 +145,15 @@ class provider implements
         $sql = "SELECT bt.userid
                   FROM {blerify_wallet_tickets} bt
                   JOIN {blerify} b ON b.id = bt.blerifyid
+                  JOIN {course_modules} cm ON cm.instance = b.id
+                  JOIN {modules} m ON m.id = cm.module AND m.name = 'blerify'
+                 WHERE cm.id = :cmid";
+
+        $userlist->add_from_sql('userid', $sql, ['cmid' => $context->instanceid]);
+
+        $sql = "SELECT bl.userid
+                  FROM {blerify_wallet_lockouts} bl
+                  JOIN {blerify} b ON b.id = bl.blerifyid
                   JOIN {course_modules} cm ON cm.instance = b.id
                   JOIN {modules} m ON m.id = cm.module AND m.name = 'blerify'
                  WHERE cm.id = :cmid";
@@ -187,6 +215,23 @@ class provider implements
                     $data
                 );
             }
+
+            $lockouts = $DB->get_records('blerify_wallet_lockouts', [
+                'blerifyid' => $cm->instance,
+                'userid' => $userid,
+            ]);
+
+            foreach ($lockouts as $lockout) {
+                $data = (object) [
+                    'failcount' => $lockout->failcount,
+                    'lockeduntil' => \core_privacy\local\request\transform::datetime($lockout->lockeduntil),
+                    'timemodified' => \core_privacy\local\request\transform::datetime($lockout->timemodified),
+                ];
+                writer::with_context($context)->export_data(
+                    [get_string('pluginname', 'blerify'), 'wallet_lockouts'],
+                    $data
+                );
+            }
         }
 
         $walletdid = $DB->get_record('blerify_wallet_dids', ['userid' => $userid]);
@@ -224,6 +269,7 @@ class provider implements
         }
 
         $DB->delete_records('blerify_wallet_tickets', ['blerifyid' => $cm->instance]);
+        $DB->delete_records('blerify_wallet_lockouts', ['blerifyid' => $cm->instance]);
         $DB->delete_records('blerify_credentials', ['blerifyid' => $cm->instance]);
     }
 
@@ -248,6 +294,10 @@ class provider implements
             }
 
             $DB->delete_records('blerify_wallet_tickets', [
+                'blerifyid' => $cm->instance,
+                'userid' => $userid,
+            ]);
+            $DB->delete_records('blerify_wallet_lockouts', [
                 'blerifyid' => $cm->instance,
                 'userid' => $userid,
             ]);
@@ -289,6 +339,12 @@ class provider implements
 
         $DB->delete_records_select(
             'blerify_wallet_tickets',
+            "blerifyid = :blerifyid AND userid $insql",
+            $inparams
+        );
+
+        $DB->delete_records_select(
+            'blerify_wallet_lockouts',
             "blerifyid = :blerifyid AND userid $insql",
             $inparams
         );

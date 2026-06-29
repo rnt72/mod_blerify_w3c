@@ -56,13 +56,32 @@ if (optional_param('action', '', PARAM_ALPHA) === 'resendotp') {
     require_sesskey();
 
     $ticketmanager = new ticket_manager();
-    $ticket = $ticketmanager->create_ticket($USER->id, $blerify->id);
+
+    if ($ticketmanager->is_locked($USER->id, $blerify->id)) {
+        redirect(
+            new moodle_url('/mod/blerify/view.php', ['id' => $cm->id]),
+            get_string('wallet_error_too_many_attempts', 'blerify'),
+            null,
+            \core\output\notification::NOTIFY_ERROR
+        );
+    }
+
+    $ticket = $ticketmanager->resend_otp($USER->id, $blerify->id);
 
     require_once($CFG->dirroot . '/mod/blerify/locallib.php');
     $emailsubject = get_string('otp_email_subject', 'blerify');
     $emailbody = get_string('otp_email_body', 'blerify', $ticket['otp']);
     $emailhtml = blerify_get_otp_email_html($ticket['otp']);
-    email_to_user($USER, \core_user::get_noreply_user(), $emailsubject, $emailbody, $emailhtml);
+    $sent = email_to_user($USER, \core_user::get_noreply_user(), $emailsubject, $emailbody, $emailhtml);
+
+    if (!$sent) {
+        redirect(
+            new moodle_url('/mod/blerify/view.php', ['id' => $cm->id]),
+            get_string('otp_email_failed', 'blerify'),
+            null,
+            \core\output\notification::NOTIFY_ERROR
+        );
+    }
 
     redirect(
         new moodle_url('/mod/blerify/view.php', ['id' => $cm->id]),
@@ -141,6 +160,12 @@ if (has_capability('mod/blerify:manage', $context) && optional_param('action', '
         $credrecord->timemodified = $now;
         $credrecord->id = $DB->insert_record('blerify_credentials', $credrecord);
 
+        \mod_blerify\event\credential_issued_manual::create([
+            'context' => $context,
+            'objectid' => $credrecord->id,
+            'relateduserid' => $userid,
+        ])->trigger();
+
         $success++;
     }
 
@@ -156,24 +181,6 @@ if (has_capability('mod/blerify:manage', $context) && optional_param('action', '
     }
 
     redirect(new moodle_url('/mod/blerify/view.php', ['id' => $cm->id]), $message, null, $type);
-}
-
-if (optional_param('action', '', PARAM_ALPHA) === 'directclaim') {
-    require_sesskey();
-
-    $ticketmanager = new ticket_manager();
-    $walletdid = $ticketmanager->get_did($USER->id);
-
-    if (!empty($walletdid)) {
-        $existing = $credentialsmanager->get_credential_for_user($blerify->id, $USER->id);
-        if ($existing) {
-            $credentialsmanager->reissue_credential_w3c($blerify, $config, $USER, $walletdid, $existing);
-        } else {
-            $credentialsmanager->issue_credential_w3c($blerify, $config, $USER, $walletdid);
-        }
-    }
-
-    redirect(new moodle_url('/mod/blerify/view.php', ['id' => $cm->id]));
 }
 
 if (has_capability('mod/blerify:manage', $context)) {
@@ -235,7 +242,6 @@ if (has_capability('mod/blerify:manage', $context)) {
     $credential = $credentialsmanager->get_credential_for_user($blerify->id, $USER->id);
 
     $ticketmanager = new ticket_manager();
-    $walletdid = $ticketmanager->get_did($USER->id);
 
     $smtpconfigured = !empty($CFG->smtphosts);
 
@@ -246,9 +252,6 @@ if (has_capability('mod/blerify:manage', $context)) {
         'is_processing' => false,
         'is_error' => false,
         'smtp_configured' => $smtpconfigured,
-        'wallet_did' => $walletdid ?: '',
-        'has_wallet_did' => !empty($walletdid),
-        'directclaim_url' => (new moodle_url('/mod/blerify/view.php', ['id' => $cm->id]))->out(false),
         'cmid' => $cm->id,
     ];
 
@@ -257,7 +260,6 @@ if (has_capability('mod/blerify:manage', $context)) {
             case 'assembled':
                 $templatedata['is_assembled'] = true;
                 $templatedata['credential_id'] = $credential->credentialid ?: '';
-                $templatedata['directclaim_url'] = (new moodle_url('/mod/blerify/view.php', ['id' => $cm->id]))->out(false);
                 $templatedata['sesskey'] = sesskey();
                 break;
             case 'error':
@@ -286,7 +288,10 @@ if (has_capability('mod/blerify:manage', $context)) {
             $emailsubject = get_string('otp_email_subject', 'blerify');
             $emailbody = get_string('otp_email_body', 'blerify', $ticket['otp']);
             $emailhtml = blerify_get_otp_email_html($ticket['otp']);
-            email_to_user($USER, \core_user::get_noreply_user(), $emailsubject, $emailbody, $emailhtml);
+            $sent = email_to_user($USER, \core_user::get_noreply_user(), $emailsubject, $emailbody, $emailhtml);
+            $templatedata['otp_email_failed'] = !$sent;
+        } else {
+            $templatedata['otp_previously_sent'] = true;
         }
 
         $templatedata['resendotp_url'] = (new moodle_url('/mod/blerify/view.php', ['id' => $cm->id]))->out(false);

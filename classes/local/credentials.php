@@ -86,9 +86,13 @@ class credentials {
 
         } catch (\Exception $e) {
             $credrecord->status = 'error';
-            $credrecord->errordetail = $e->getMessage();
+            if ($e instanceof \mod_blerify\apirest\issuance_exception && !empty($e->credentialid)) {
+                $credrecord->credentialid = $e->credentialid;
+            }
+            $credrecord->errordetail = 'issuance_failed';
             $credrecord->timemodified = time();
             $DB->update_record('blerify_credentials', $credrecord);
+            debugging('Blerify issuance failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
             throw $e;
         }
 
@@ -148,9 +152,13 @@ class credentials {
 
         } catch (\Exception $e) {
             $credrecord->status = 'error';
-            $credrecord->errordetail = $e->getMessage();
+            if ($e instanceof \mod_blerify\apirest\issuance_exception && !empty($e->credentialid)) {
+                $credrecord->credentialid = $e->credentialid;
+            }
+            $credrecord->errordetail = 'issuance_failed';
             $credrecord->timemodified = time();
             $DB->update_record('blerify_credentials', $credrecord);
+            debugging('Blerify issuance failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
             throw $e;
         }
     }
@@ -204,9 +212,13 @@ class credentials {
 
         } catch (\Exception $e) {
             $existing->status = 'error';
-            $existing->errordetail = $e->getMessage();
+            if ($e instanceof \mod_blerify\apirest\issuance_exception && !empty($e->credentialid)) {
+                $existing->credentialid = $e->credentialid;
+            }
+            $existing->errordetail = 'issuance_failed';
             $existing->timemodified = time();
             $DB->update_record('blerify_credentials', $existing);
+            debugging('Blerify reissue failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
             throw $e;
         }
     }
@@ -251,14 +263,11 @@ class credentials {
      * @return string 'demo' or 'production'.
      */
     public function get_environment(): string {
-        $json = get_config('mod_blerify', 'service_account_json');
-        if (!empty($json)) {
-            $sa = json_decode($json, true);
-            if ($sa && isset($sa['token_uri'])) {
-                $host = parse_url($sa['token_uri'], PHP_URL_HOST);
-                if (strpos($host, 'api.demo.') !== false) {
-                    return 'demo';
-                }
+        $sa = \mod_blerify\local\service_account::get_decoded();
+        if ($sa && isset($sa['token_uri'])) {
+            $host = parse_url($sa['token_uri'], PHP_URL_HOST);
+            if (strpos($host, 'api.demo.') !== false) {
+                return 'demo';
             }
         }
         return 'production';
@@ -288,21 +297,5 @@ class credentials {
 
         return 'https://' . $wallethost . '/' . $env .
             '/downloadW3C?claim_mode=OTP&resource_link=' . urlencode($claimurl);
-    }
-
-    /**
-     * Get the organization ID from service account JSON.
-     *
-     * @return string
-     */
-    private function get_organization_id() {
-        $json = get_config('mod_blerify', 'service_account_json');
-        if (!empty($json)) {
-            $sa = json_decode($json, true);
-            if ($sa && isset($sa['organization_id'])) {
-                return $sa['organization_id'];
-            }
-        }
-        return get_config('mod_blerify', 'organization_id');
     }
 }

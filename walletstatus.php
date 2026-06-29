@@ -54,4 +54,11 @@ if (!is_enrolled($context, $USER->id, '', true)) {
 $manager = new ticket_manager();
 $status = $manager->get_ticket_status($USER->id, $cm->instance);
 
-echo json_encode(['status' => $status]);
+$updated = 0;
+$credential = $DB->get_record('blerify_credentials',
+    ['blerifyid' => $cm->instance, 'userid' => $USER->id], 'timemodified');
+if ($credential) {
+    $updated = (int)$credential->timemodified;
+}
+
+echo json_encode(['status' => $status, 'updated' => $updated]);

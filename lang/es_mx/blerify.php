@@ -170,6 +170,7 @@ $string['claim_certificate_btn'] = 'Reclamar tu Certificado';
 $string['reclaim_certificate_btn'] = 'Volver a reclamar certificado';
 $string['claim_requires_wallet'] = 'Necesitas vincular tu wallet primero';
 $string['claim_success'] = 'Credencial emitida exitosamente';
+$string['reclaim_btn'] = 'Volver a reclamar';
 $string['credential_assembled_desc'] = 'Tu credencial ha sido emitida correctamente a tu wallet.';
 $string['claim_error_no_did'] = 'No se puede reclamar: wallet no vinculada';
 $string['claim_error_already'] = 'Ya tienes una credencial para esta actividad';

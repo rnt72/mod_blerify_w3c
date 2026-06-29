@@ -24,13 +24,18 @@
         <div class="card-body">
 
             <div class="text-center">
-                {{#is_assembled}}
+                {{#claimed_done}}
                     <div class="alert alert-success py-3 mb-2">
                         <strong>{{#str}}claim_success, blerify{{/str}}</strong>
                         <br/>
                         <small>{{#str}}credential_assembled_desc, blerify{{/str}}</small>
                     </div>
-                {{/is_assembled}}
+                    <form method="post" action="{{ reclaim_url }}" class="mb-2">
+                        <input type="hidden" name="reclaim" value="1">
+                        <input type="hidden" name="sesskey" value="{{ sesskey }}">
+                        <button type="submit" class="btn btn-primary">{{#str}}reclaim_btn, blerify{{/str}}</button>
+                    </form>
+                {{/claimed_done}}
 
                 {{#is_processing}}
                     <div class="alert alert-info py-2 mb-2">

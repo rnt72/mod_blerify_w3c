@@ -271,9 +271,17 @@ if (has_capability('mod/blerify:manage', $context)) {
         }
     }
 
-    $needsclaim = !$templatedata['is_assembled'] && !$templatedata['is_processing'];
+    $reclaimrequested = optional_param('reclaim', 0, PARAM_BOOL);
+    if ($reclaimrequested) {
+        require_sesskey();
+    }
+
+    $needsclaim = (!$templatedata['is_assembled'] || $reclaimrequested) && !$templatedata['is_processing'];
     $templatedata['show_claim'] = $needsclaim && $smtpconfigured;
     $templatedata['show_smtp_warning'] = $needsclaim && !$smtpconfigured;
+    $templatedata['claimed_done'] = $templatedata['is_assembled'] && !$templatedata['show_claim'];
+    $templatedata['reclaim_url'] = (new moodle_url('/mod/blerify/view.php', ['id' => $cm->id]))->out(false);
+    $templatedata['sesskey'] = sesskey();
 
     if ($templatedata['show_claim']) {
         $ticket = $ticketmanager->get_or_create_ticket($USER->id, $blerify->id);
@@ -310,7 +318,7 @@ if (has_capability('mod/blerify:manage', $context)) {
             'sesskey' => sesskey(),
             'cmid' => $cm->id,
             'refreshUrl' => $refreshurl->out(false),
-            'skipPolling' => $templatedata['is_assembled'],
+            'since' => $credential ? (int)$credential->timemodified : 0,
         ]]);
     }
 

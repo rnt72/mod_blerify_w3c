@@ -56,7 +56,7 @@ define([], function() {
                     .then(function(data) {
                         consecutiveErrors = 0;
                         pollInterval = 5000;
-                        if (data.status === 'assembled') {
+                        if (data.status === 'assembled' && (data.updated || 0) > (config.since || 0)) {
                             clearInterval(pollTimer);
                             clearInterval(countdownTimer);
                             window.location.href = config.refreshUrl;

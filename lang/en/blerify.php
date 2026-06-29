@@ -185,6 +185,7 @@ $string['claim_certificate_btn'] = 'Claim your Certificate';
 $string['reclaim_certificate_btn'] = 'Reclaim certificate';
 $string['claim_requires_wallet'] = 'You need to link your wallet first';
 $string['claim_success'] = 'Credential issued successfully';
+$string['reclaim_btn'] = 'Re-claim credential';
 $string['credential_assembled_desc'] = 'Your credential has been successfully issued to your wallet.';
 $string['claim_error_no_did'] = 'Cannot claim: wallet not linked';
 $string['claim_error_already'] = 'You already have a credential for this activity';

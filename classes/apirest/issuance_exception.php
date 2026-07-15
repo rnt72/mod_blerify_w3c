@@ -34,6 +34,12 @@ class issuance_exception extends \Exception {
     /** @var string Last lifecycle step reached before the failure. */
     public $laststep;
 
+    public $signingmessage;
+
+    public $signature;
+
+    public $publickey;
+
     /**
      * Constructor.
      *
@@ -42,9 +48,13 @@ class issuance_exception extends \Exception {
      * @param string $laststep One of 'created', 'signed'.
      * @param \Throwable|null $previous
      */
-    public function __construct($message, $credentialid = null, $laststep = '', $previous = null) {
+    public function __construct($message, $credentialid = null, $laststep = '', $previous = null,
+            $signingmessage = null, $signature = null, $publickey = null) {
         parent::__construct($message, 0, $previous);
         $this->credentialid = $credentialid;
         $this->laststep = $laststep;
+        $this->signingmessage = $signingmessage;
+        $this->signature = $signature;
+        $this->publickey = $publickey;
     }
 }

@@ -44,38 +44,91 @@ class credentials {
      * @throws \Exception
      */
     public function issue_credential($blerifyrecord, $config, $user, $walletdid = null) {
+        if (empty($walletdid)) {
+            $walletmanager = new ticket_manager();
+            $walletdid = $walletmanager->get_did($user->id);
+        }
+
+        $lock = $this->get_issue_lock($blerifyrecord->id, $user->id);
+        try {
+            $credrecord = $this->get_or_create_record($blerifyrecord->id, $user->id, $walletdid);
+
+            if ($credrecord->status === 'assembled') {
+                return $credrecord;
+            }
+
+            $this->process_issuance($credrecord, $config, $user, $walletdid);
+
+            return $credrecord;
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function get_issue_lock($blerifyid, $userid) {
+        $factory = \core\lock\lock_config::get_lock_factory('mod_blerify_issuance');
+        $lock = $factory->get_lock($blerifyid . '_' . $userid, 15);
+        if (!$lock) {
+            throw new \Exception('Blerify: could not acquire issuance lock for user ' . $userid);
+        }
+        return $lock;
+    }
+
+    private function get_or_create_record($blerifyid, $userid, $walletdid = null) {
         global $DB;
 
         $now = time();
-
         $credrecord = new \stdClass();
-        $credrecord->blerifyid = $blerifyrecord->id;
-        $credrecord->userid = $user->id;
+        $credrecord->blerifyid = $blerifyid;
+        $credrecord->userid = $userid;
+        $credrecord->wallet_did = $walletdid;
         $credrecord->status = 'pending';
+        $credrecord->laststep = null;
         $credrecord->timecreated = $now;
         $credrecord->timemodified = $now;
-        $credrecord->id = $DB->insert_record('blerify_credentials', $credrecord);
 
         try {
-            $blerify = new client();
+            $credrecord->id = $DB->insert_record('blerify_credentials', $credrecord);
+            return $credrecord;
+        } catch (\dml_write_exception $e) {
+            return $DB->get_record('blerify_credentials',
+                ['blerifyid' => $blerifyid, 'userid' => $userid], '*', MUST_EXIST);
+        }
+    }
 
-            $api = new apirest($blerify);
+    private function process_issuance($credrecord, $config, $user, $walletdid) {
+        global $DB;
 
-            if (empty($walletdid)) {
-                $walletmanager = new ticket_manager();
-                $walletdid = $walletmanager->get_did($user->id);
-            }
+        $resume = null;
+        if (!empty($credrecord->credentialid) && !empty($credrecord->laststep)
+                && $credrecord->laststep !== 'assembled') {
+            $resume = [
+                'credentialid' => $credrecord->credentialid,
+                'laststep' => $credrecord->laststep,
+                'signingmessage' => $credrecord->signingmessage ?? null,
+                'signature' => $credrecord->signature ?? null,
+                'publickey' => $credrecord->publickey ?? null,
+            ];
+        }
 
+        try {
+            $api = new apirest(new client());
             $result = $api->issue_credential(
                 $user,
                 $config->templateid,
                 $config->projectid,
-                $walletdid
+                $walletdid,
+                $resume
             );
 
             $credrecord->credentialid = $result['credential_id'];
             $credrecord->status = $result['status'];
+            $credrecord->laststep = 'assembled';
             $credrecord->wallet_did = $walletdid;
+            $credrecord->signingmessage = null;
+            $credrecord->signature = null;
+            $credrecord->publickey = null;
+            $credrecord->errordetail = null;
             $credrecord->timemodified = time();
 
             if (!empty($result['assemble_raw'])) {
@@ -84,10 +137,20 @@ class credentials {
 
             $DB->update_record('blerify_credentials', $credrecord);
 
+            return $result;
+
         } catch (\Exception $e) {
             $credrecord->status = 'error';
-            if ($e instanceof \mod_blerify\apirest\issuance_exception && !empty($e->credentialid)) {
-                $credrecord->credentialid = $e->credentialid;
+            if ($e instanceof \mod_blerify\apirest\issuance_exception) {
+                if (!empty($e->credentialid)) {
+                    $credrecord->credentialid = $e->credentialid;
+                }
+                if (!empty($e->laststep)) {
+                    $credrecord->laststep = $e->laststep;
+                }
+                $credrecord->signingmessage = $e->signingmessage;
+                $credrecord->signature = $e->signature;
+                $credrecord->publickey = $e->publickey;
             }
             $credrecord->errordetail = 'issuance_failed';
             $credrecord->timemodified = time();
@@ -95,8 +158,6 @@ class credentials {
             debugging('Blerify issuance failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
             throw $e;
         }
-
-        return $credrecord;
     }
 
     /**
@@ -110,56 +171,19 @@ class credentials {
      * @throws \Exception
      */
     public function issue_credential_w3c($blerifyrecord, $config, $user, $walletdid) {
-        global $DB;
-
-        $now = time();
-
-        $credrecord = new \stdClass();
-        $credrecord->blerifyid = $blerifyrecord->id;
-        $credrecord->userid = $user->id;
-        $credrecord->wallet_did = $walletdid;
-        $credrecord->status = 'pending';
-        $credrecord->timecreated = $now;
-        $credrecord->timemodified = $now;
-        $credrecord->id = $DB->insert_record('blerify_credentials', $credrecord);
-
+        $lock = $this->get_issue_lock($blerifyrecord->id, $user->id);
         try {
-            $blerify = new client();
-            $api = new apirest($blerify);
+            $credrecord = $this->get_or_create_record($blerifyrecord->id, $user->id, $walletdid);
+            $credrecord->wallet_did = $walletdid;
 
-            $result = $api->issue_credential(
-                $user,
-                $config->templateid,
-                $config->projectid,
-                $walletdid
-            );
-
-            $credrecord->credentialid = $result['credential_id'];
-            $credrecord->status = $result['status'];
-            $credrecord->timemodified = time();
-
-            $assembleraw = $result['assemble_raw'] ?? '';
-            if (!empty($assembleraw)) {
-                $credrecord->deeplinkurl = $assembleraw;
-            }
-
-            $DB->update_record('blerify_credentials', $credrecord);
+            $result = $this->process_issuance($credrecord, $config, $user, $walletdid);
 
             return [
                 'credential_id' => $result['credential_id'],
-                'assemble_raw' => $assembleraw,
+                'assemble_raw' => $result['assemble_raw'] ?? '',
             ];
-
-        } catch (\Exception $e) {
-            $credrecord->status = 'error';
-            if ($e instanceof \mod_blerify\apirest\issuance_exception && !empty($e->credentialid)) {
-                $credrecord->credentialid = $e->credentialid;
-            }
-            $credrecord->errordetail = 'issuance_failed';
-            $credrecord->timemodified = time();
-            $DB->update_record('blerify_credentials', $credrecord);
-            debugging('Blerify issuance failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
-            throw $e;
+        } finally {
+            $lock->release();
         }
     }
 
@@ -178,48 +202,31 @@ class credentials {
     public function reissue_credential_w3c($blerifyrecord, $config, $user, $walletdid, $existing) {
         global $DB;
 
-        $existing->status = 'pending';
-        $existing->timemodified = time();
-        $DB->update_record('blerify_credentials', $existing);
-
+        $lock = $this->get_issue_lock($blerifyrecord->id, $user->id);
         try {
-            $blerify = new client();
-            $api = new apirest($blerify);
-
-            $result = $api->issue_credential(
-                $user,
-                $config->templateid,
-                $config->projectid,
-                $walletdid
-            );
-
-            $existing->credentialid = $result['credential_id'];
-            $existing->status = $result['status'];
+            $existing = $DB->get_record('blerify_credentials', ['id' => $existing->id], '*', MUST_EXIST);
             $existing->wallet_did = $walletdid;
-            $existing->timemodified = time();
 
-            $assembleraw = $result['assemble_raw'] ?? '';
-            if (!empty($assembleraw)) {
-                $existing->deeplinkurl = $assembleraw;
+            if ($existing->status === 'assembled') {
+                $existing->credentialid = null;
+                $existing->laststep = null;
+                $existing->signingmessage = null;
+                $existing->signature = null;
+                $existing->publickey = null;
             }
 
+            $existing->status = 'pending';
+            $existing->timemodified = time();
             $DB->update_record('blerify_credentials', $existing);
+
+            $result = $this->process_issuance($existing, $config, $user, $walletdid);
 
             return [
                 'credential_id' => $result['credential_id'],
-                'assemble_raw' => $assembleraw,
+                'assemble_raw' => $result['assemble_raw'] ?? '',
             ];
-
-        } catch (\Exception $e) {
-            $existing->status = 'error';
-            if ($e instanceof \mod_blerify\apirest\issuance_exception && !empty($e->credentialid)) {
-                $existing->credentialid = $e->credentialid;
-            }
-            $existing->errordetail = 'issuance_failed';
-            $existing->timemodified = time();
-            $DB->update_record('blerify_credentials', $existing);
-            debugging('Blerify reissue failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
-            throw $e;
+        } finally {
+            $lock->release();
         }
     }
 

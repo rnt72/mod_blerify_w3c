@@ -54,36 +54,59 @@ class apirest {
      * @param string $templateid Blerify template UUID.
      * @param string $projectid Blerify project UUID.
      * @param string|null $walletdid Optional wallet DID.
+     * @param array|null $resume Progress from a prior attempt.
      * @return array ['credential_id' => string, 'status' => string, 'code' => string|null]
      * @throws \Exception On API error.
      */
-    public function issue_credential($user, $templateid, $projectid, $walletdid = null) {
-        $createresponse = $this->create_credential($user, $templateid, $projectid, $walletdid);
+    public function issue_credential($user, $templateid, $projectid, $walletdid = null, $resume = null) {
+        $credentialid = isset($resume['credentialid']) ? $resume['credentialid'] : null;
+        $laststep = isset($resume['laststep']) ? $resume['laststep'] : null;
+        $signingmessage = isset($resume['signingmessage']) ? $resume['signingmessage'] : null;
+        $signature = isset($resume['signature']) ? $resume['signature'] : null;
+        $publickey = isset($resume['publickey']) ? $resume['publickey'] : null;
+        $code = null;
 
-        $credential = isset($createresponse->credential) ? $createresponse->credential : $createresponse;
-        if (!isset($createresponse->signingMessage) || !isset($credential->_id)) {
-            throw new \Exception('Failed to create credential: malformed response');
+        if (empty($credentialid)) {
+            $createresponse = $this->create_credential($user, $templateid, $projectid, $walletdid);
+
+            $credential = isset($createresponse->credential) ? $createresponse->credential : $createresponse;
+            if (!isset($createresponse->signingMessage) || !isset($credential->_id)) {
+                throw new \Exception('Failed to create credential: malformed response');
+            }
+            $signingmessage = $createresponse->signingMessage;
+            $credentialid = $credential->_id;
+            $code = isset($credential->code) ? $credential->code : null;
+            $laststep = 'created';
         }
-        $signingmessage = $createresponse->signingMessage;
-        $credentialid = $credential->_id;
 
-        try {
-            $signresult = $this->sign_credential($projectid, $credentialid, $signingmessage);
-        } catch (\Exception $e) {
-            throw new issuance_exception($e->getMessage(), $credentialid, 'created', $e);
+        if ($laststep !== 'signed' || empty($signature) || empty($publickey)) {
+            if (empty($signingmessage)) {
+                throw new issuance_exception(
+                    'Cannot resume issuance: missing signing message', $credentialid, 'created');
+            }
+            try {
+                $signresult = $this->sign_credential($projectid, $credentialid, $signingmessage);
+            } catch (\Exception $e) {
+                throw new issuance_exception(
+                    $e->getMessage(), $credentialid, 'created', $e, $signingmessage);
+            }
+            $signature = $signresult->signature;
+            $publickey = $signresult->publicKey;
+            $laststep = 'signed';
         }
 
         try {
             $assembleresponse = $this->assemble_credential($projectid, $credentialid, $templateid,
-                $signresult->signature, $signresult->publicKey);
+                $signature, $publickey);
         } catch (\Exception $e) {
-            throw new issuance_exception($e->getMessage(), $credentialid, 'signed', $e);
+            throw new issuance_exception(
+                $e->getMessage(), $credentialid, 'signed', $e, $signingmessage, $signature, $publickey);
         }
 
         return [
             'credential_id' => $credentialid,
             'status' => 'assembled',
-            'code' => isset($credential->code) ? $credential->code : null,
+            'code' => $code,
             'assemble_raw' => $assembleresponse,
         ];
     }

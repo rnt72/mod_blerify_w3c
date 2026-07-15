@@ -50,6 +50,10 @@
         <FIELD NAME="deeplinkcode" TYPE="char" LENGTH="512" NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="deeplinkurl" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="errordetail" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="laststep" TYPE="char" LENGTH="16" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="signingmessage" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="signature" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="publickey" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
       </FIELDS>

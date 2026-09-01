@@ -41,3 +41,10 @@ $settings->add(
     )
 );
 
+$settings->add(new admin_setting_configtext(
+    'mod_blerify/project_id',
+    get_string('setting_project_id', 'blerify'),
+    get_string('setting_project_id_desc', 'blerify'),
+    '',
+    PARAM_ALPHANUMEXT
+));

@@ -43,13 +43,11 @@ $string['projectid_help'] = 'UUID del proyecto Blerify para este certificado';
 $string['templateid'] = 'ID de Plantilla';
 $string['templateid_help'] = 'UUID de la plantilla de credencial Blerify';
 $string['projectid_placeholder'] = 'ej. 60f1a2b3-c4d5-6e7f-8a9b-0c1d2e3f4a5b';
-$string['templateid_placeholder'] = 'ej. 50a1b2c3-d4e5-6f7a-8b9c-0d1e2f3a4b5c';
 $string['completionissue'] = 'Emitir al completar el curso';
 $string['completionissue_help'] = 'Emitir automáticamente un certificado cuando el estudiante complete el curso';
 
 // Validation errors.
 $string['error_projectid_required'] = 'El ID de Proyecto es obligatorio';
-$string['error_templateid_required'] = 'El ID de Plantilla es obligatorio';
 
 // View page.
 $string['viewheader'] = 'Certificados para: {$a}';
@@ -57,10 +55,8 @@ $string['nocertificates'] = 'No hay actividades de certificado Blerify en este c
 $string['indexheader'] = 'Certificados Blerify en: {$a}';
 
 // Student view.
-$string['claim_certificate'] = 'Reclamar Certificado';
 $string['certificate_processing'] = 'Tu certificado está siendo procesado. Por favor, vuelve a consultar más tarde.';
 $string['certificate_error'] = 'Hubo un error al emitir tu certificado. Por favor, contacta a tu instructor.';
-$string['certificate_pending'] = 'Completa el curso para recibir tu certificado digital.';
 
 // Teacher view.
 $string['col_student'] = 'Estudiante';
@@ -72,10 +68,6 @@ $string['no_credentials_issued'] = 'Aún no se han emitido credenciales.';
 
 // Statuses.
 $string['status_pending'] = 'Pendiente';
-$string['status_created'] = 'Creada';
-$string['status_signed'] = 'Firmada';
-$string['status_assembled'] = 'Emitida';
-$string['status_authorized'] = 'Habilitado';
 $string['status_error'] = 'Error';
 
 // Events.
@@ -86,17 +78,10 @@ $string['privacy:metadata:blerify_credentials'] = 'Información sobre las creden
 $string['privacy:metadata:blerify_credentials:userid'] = 'El ID del usuario receptor de la credencial';
 $string['privacy:metadata:blerify_credentials:credentialid'] = 'El identificador externo de la credencial en Blerify';
 $string['privacy:metadata:blerify_credentials:status'] = 'El estado actual de la credencial';
-$string['privacy:metadata:blerify_credentials:wallet_did'] = 'El DID de la wallet del usuario';
-$string['privacy:metadata:blerify_wallet_dids'] = 'DIDs de wallet vinculados a cuentas de usuario';
-$string['privacy:metadata:blerify_wallet_dids:userid'] = 'El ID del usuario propietario de la wallet';
-$string['privacy:metadata:blerify_wallet_dids:did'] = 'El identificador descentralizado de la wallet del usuario';
-$string['privacy:metadata:blerify_wallet_tickets'] = 'Tickets temporales utilizados para el reclamo de credenciales por QR';
-$string['privacy:metadata:blerify_wallet_tickets:userid'] = 'El ID del usuario titular del ticket';
 
 // Errors.
 $string['error_not_configured'] = 'El plugin Blerify no está configurado correctamente. Por favor, contacta al administrador.';
 $string['error_api_call'] = 'Error al comunicarse con la API de Blerify: {$a}';
-$string['error_no_wallet_did'] = 'No se puede emitir la credencial: el estudiante no ha vinculado su wallet. Debe escanear el código QR con la app Blerify Wallet primero.';
 
 // Admin config management.
 $string['manage_configs'] = 'Gestionar Configuraciones Blerify';
@@ -127,54 +112,16 @@ $string['issue_error_partial'] = '{$a->success} credencial(es) habilitada(s). {$
 $string['issue_no_selection'] = 'No se seleccionaron participantes.';
 $string['col_participant'] = 'Participante';
 $string['col_actions'] = 'Acciones';
-$string['already_issued'] = 'Ya habilitada';
 $string['retry_issue'] = 'Reintentar';
 $string['retry_success'] = 'Credencial rehabilitada exitosamente.';
 $string['retry_failed'] = 'Reintento fallido. Revisa los registros para más detalles.';
 
 // Wallet connect.
-$string['wallet_connect_title'] = 'Conecta tu Blerify Wallet';
-$string['wallet_connect_desc'] = 'Escanea el código QR desde tu Wallet e ingresa el código OTP que se envió a tu correo.';
-$string['wallet_connect_desc_v2'] = 'Escanea el código QR desde tu Wallet e ingresa el código OTP que se envió a tu correo.';
-$string['wallet_download_title'] = 'Descarga tu wallet';
 $string['wallet_download_prompt'] = '¿Aún no tienes la wallet? Descárgala aquí:';
 $string['wallet_download_ios'] = 'Descargar en App Store';
 $string['wallet_download_android'] = 'Obtener en Google Play';
-$string['wallet_qr_expires_in'] = 'El código QR expira en: {$a}';
-$string['wallet_qr_refresh'] = 'Generar nuevo código QR';
-$string['wallet_qr_expired'] = 'El código QR ha expirado.';
-$string['wallet_linked_title'] = 'Wallet Conectada';
-$string['wallet_linked_desc'] = 'Tu Blerify Wallet ha sido vinculada exitosamente a tu cuenta.';
-$string['wallet_error_invalid_token'] = 'Token QR inválido o no reconocido.';
-$string['wallet_error_token_used'] = 'Este código QR ya fue utilizado.';
-$string['wallet_error_token_expired'] = 'Este código QR ha expirado.';
-$string['wallet_error_too_many_attempts'] = 'Demasiados intentos fallidos. Por favor, genera un nuevo código QR.';
 
 // OTP and claim.
-$string['wallet_otp_label'] = 'Código de verificación';
-$string['wallet_did_current'] = 'Tu DID actual: {$a}';
-$string['otp_also_sent_email'] = 'También enviado a tu correo electrónico';
-$string['otp_resend_btn'] = 'Reenviar código de verificación';
-$string['smtp_not_configured'] = 'Correo SMTP no configurado, por favor contacte con el administrador';
-$string['smtp_not_configured_title'] = 'Servicio de correo no configurado';
-$string['smtp_not_configured_desc'] = 'Es necesario habilitar el servicio de correo SMTP para poder emitir credenciales, ya que el código de verificación se envía por correo electrónico. Contacta con el administrador del sitio.';
-$string['otp_resent'] = 'Se ha enviado un nuevo código de verificación a tu correo electrónico.';
-$string['otp_email_subject'] = 'Blerify - Código de verificación';
-$string['otp_email_body'] = 'Tu código de verificación para reclamar tu credencial Blerify es: {$a}. Este código expira en 5 minutos.';
-$string['otp_email_html_title'] = '¡Código de verificación!';
-$string['otp_email_html_greeting'] = '<b>¡Hola!</b><br>Se ha generado un código de verificación para reclamar tu credencial digital en tu billetera <b>Blerify</b>. Ingresa el siguiente código en la plataforma:';
-$string['otp_email_html_expiry'] = 'Este código expira en 5 minutos.';
-$string['otp_email_html_welcome'] = '¡Bienvenido al futuro, donde eres dueño de tus datos!';
-$string['otp_email_html_footer'] = 'Recibes este correo electrónico porque tienes una cuenta de Blerify&trade;. Si no estás seguro de por qué recibes este correo electrónico, contáctanos en <a href="mailto:support@blerify.com" style="text-decoration:none;font-weight:600;color:#2e95d3;">support@blerify.com</a>.';
-$string['claim_certificate_btn'] = 'Reclamar tu Certificado';
-$string['reclaim_certificate_btn'] = 'Volver a reclamar certificado';
-$string['claim_requires_wallet'] = 'Necesitas vincular tu wallet primero';
-$string['claim_success'] = 'Credencial emitida exitosamente';
-$string['reclaim_btn'] = 'Volver a reclamar';
-$string['credential_assembled_desc'] = 'Tu credencial ha sido emitida correctamente a tu wallet.';
-$string['claim_error_no_did'] = 'No se puede reclamar: wallet no vinculada';
-$string['claim_error_already'] = 'Ya tienes una credencial para esta actividad';
-$string['wallet_error_invalid_otp'] = 'Código de verificación inválido.';
 
 // Course completion notification.
 $string['completion_notification_subject'] = 'Blerify - Tu credencial está lista para reclamar';
@@ -187,3 +134,45 @@ $string['blerify:manage'] = 'Gestionar Certificados Blerify';
 
 // Security.
 $string['usernotenrolled'] = 'El usuario especificado no está inscrito en este curso.';
+
+// Configuracion del certificado en el formulario de la actividad.
+$string['certificatename'] = 'Nombre del certificado';
+$string['certificatename_help'] = 'El nombre que los estudiantes veran para este certificado en el curso.';
+$string['templatetoissue'] = 'Plantilla a emitir';
+$string['templatetoissue_help'] = 'La plantilla de credencial de Blerify con la que se emite este certificado. La lista proviene del proyecto configurado para este curso.';
+$string['passgrade'] = 'Nota minima para emitir (%)';
+$string['passgrade_help'] = 'La nota mínima requerida cuando Moodle marca el curso como finalizado.';
+
+// Vista del estudiante.
+$string['certificate_not_yet'] = 'Tu certificado aun no esta disponible.';
+$string['certificate_threshold'] = 'Necesitas una nota del curso de al menos';
+$string['certificate_current_grade'] = 'Tu nota actual:';
+$string['pdf_download'] = 'Descargar PDF';
+$string['pdf_open'] = 'Abrir el PDF';
+$string['pdf_inline_unavailable'] = 'Tu navegador no puede mostrar el PDF aqui.';
+$string['claim_btn'] = 'Reclamar mi credencial';
+$string['claim_scan_prompt'] = 'Escanea este codigo con la billetera Blerify para reclamar tu credencial.';
+$string['claim_or_open_link'] = 'Ya estas en tu celular?';
+$string['claim_open_wallet'] = 'Abrir en la billetera';
+
+// Estados de la credencial.
+$string['status_issuing'] = 'Emitiendo';
+$string['status_issued'] = 'Emitida';
+$string['status_claimed'] = 'Reclamada';
+$string['error_detail'] = 'Detalle del error';
+
+// Errores.
+$string['error_no_templates'] = 'El proyecto configurado para este curso no tiene plantillas de credencial disponibles.';
+$string['error_templates_unavailable'] = 'No se pudieron cargar las plantillas de credencial. Revisa la configuracion de la cuenta de servicio de Blerify.';
+$string['error_passgrade_range'] = 'La nota minima debe estar entre 0 y 100.';
+$string['error_credential_not_ready'] = 'Esta credencial aun no esta disponible.';
+
+$string['privacy:metadata:blerify_credentials:code'] = 'El codigo de reclamo usado para construir el enlace de la billetera';
+$string['privacy:metadata:blerify_credentials:timecreated'] = 'La fecha en que se creo el registro de la credencial';
+$string['privacy:metadata:blerify_api'] = 'Datos enviados a la plataforma Blerify para emitir una credencial';
+$string['privacy:metadata:blerify_api:email'] = 'El correo al que se emite la credencial';
+$string['privacy:metadata:blerify_api:fullname'] = 'El nombre que se imprime en la credencial';
+
+$string['setting_project_id'] = 'ID de proyecto';
+$string['setting_project_id_desc'] = 'Proyecto de Blerify bajo el que se emiten las credenciales. Todos los cursos usan este proyecto, salvo que se configure una excepcion por curso. Lo encuentras en la URL del panel de Blerify: /projects/<PROJECT-ID>/emission';
+$string['error_no_project_id'] = 'No hay ningun proyecto de Blerify configurado. Pide al administrador que indique el ID de proyecto en los ajustes del plugin.';

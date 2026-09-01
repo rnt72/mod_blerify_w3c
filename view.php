@@ -16,7 +16,7 @@
 
 /**
  * View page for mod_blerify.
- * Shows teacher view or student view.
+ * Shows the issuing table to teachers and the certificate to learners.
  *
  * @package    mod_blerify
  * @copyright  Blerify <dev@blerify.com>
@@ -25,13 +25,12 @@
 
 require_once('../../config.php');
 require_once($CFG->dirroot . '/mod/blerify/lib.php');
-
+require_once($CFG->dirroot . '/mod/blerify/locallib.php');
 
 use mod_blerify\local\credentials;
-use mod_blerify\wallet\ticket_manager;
 use mod_blerify\wallet\qr_generator;
 
-$id = required_param('id', PARAM_INT); 
+$id = required_param('id', PARAM_INT);
 
 $cm = get_coursemodule_from_id('blerify', $id, 0, false, MUST_EXIST);
 $course = $DB->get_record('course', ['id' => $cm->course], '*', MUST_EXIST);
@@ -48,148 +47,82 @@ $PAGE->set_cm($cm);
 $PAGE->set_title(format_string($blerify->name));
 $PAGE->set_heading(format_string($course->fullname));
 
-$credentialsmanager = new credentials();
+$manager = new credentials();
+$action = optional_param('action', '', PARAM_ALPHA);
+$viewurl = new moodle_url('/mod/blerify/view.php', ['id' => $cm->id]);
 
-$config = $DB->get_record('blerify_configs', ['id' => $blerify->configid]);
-
-if (optional_param('action', '', PARAM_ALPHA) === 'resendotp') {
+if (has_capability('mod/blerify:manage', $context) && in_array($action, ['issue', 'retry'], true)) {
     require_sesskey();
 
-    $ticketmanager = new ticket_manager();
-
-    if ($ticketmanager->is_locked($USER->id, $blerify->id)) {
-        redirect(
-            new moodle_url('/mod/blerify/view.php', ['id' => $cm->id]),
-            get_string('wallet_error_too_many_attempts', 'blerify'),
-            null,
-            \core\output\notification::NOTIFY_ERROR
-        );
+    if (blerify_get_project_id($course->id) === '') {
+        redirect($viewurl, get_string('error_no_project_id', 'blerify'), null,
+            \core\output\notification::NOTIFY_ERROR);
     }
 
-    $ticket = $ticketmanager->resend_otp($USER->id, $blerify->id);
+    $targets = ($action === 'retry')
+        ? [required_param('retryuserid', PARAM_INT)]
+        : optional_param_array('selectedusers', [], PARAM_INT);
 
-    require_once($CFG->dirroot . '/mod/blerify/locallib.php');
-    $emailsubject = get_string('otp_email_subject', 'blerify');
-    $emailbody = get_string('otp_email_body', 'blerify', $ticket['otp']);
-    $emailhtml = blerify_get_otp_email_html($ticket['otp']);
-    $sent = email_to_user($USER, \core_user::get_noreply_user(), $emailsubject, $emailbody, $emailhtml);
-
-    if (!$sent) {
-        redirect(
-            new moodle_url('/mod/blerify/view.php', ['id' => $cm->id]),
-            get_string('otp_email_failed', 'blerify'),
-            null,
-            \core\output\notification::NOTIFY_ERROR
-        );
-    }
-
-    redirect(
-        new moodle_url('/mod/blerify/view.php', ['id' => $cm->id]),
-        get_string('otp_resent', 'blerify'),
-        null,
-        \core\output\notification::NOTIFY_SUCCESS
-    );
-}
-
-if (has_capability('mod/blerify:manage', $context) && optional_param('action', '', PARAM_ALPHA) === 'retry') {
-    require_sesskey();
-
-    $retryuserid = required_param('retryuserid', PARAM_INT);
-    $user = $DB->get_record('user', ['id' => $retryuserid], '*', MUST_EXIST);
-
-    if (!is_enrolled($context, $retryuserid)) {
-        throw new moodle_exception('usernotenrolled', 'blerify');
-    }
-
-    $DB->delete_records('blerify_credentials', [
-        'blerifyid' => $blerify->id,
-        'userid' => $retryuserid,
-        'status' => 'error',
-    ]);
-
-    $now = time();
-    $credrecord = new \stdClass();
-    $credrecord->blerifyid = $blerify->id;
-    $credrecord->userid = $retryuserid;
-    $credrecord->status = 'authorized';
-    $credrecord->timecreated = $now;
-    $credrecord->timemodified = $now;
-    $DB->insert_record('blerify_credentials', $credrecord);
-
-    $message = get_string('retry_success', 'blerify');
-    $type = \core\output\notification::NOTIFY_SUCCESS;
-
-    redirect(new moodle_url('/mod/blerify/view.php', ['id' => $cm->id]), $message, null, $type);
-}
-
-if (has_capability('mod/blerify:manage', $context) && optional_param('action', '', PARAM_ALPHA) === 'issue') {
-    require_sesskey();
-
-    $selectedusers = optional_param_array('selectedusers', [], PARAM_INT);
-
-    if (empty($selectedusers)) {
-        redirect(
-            new moodle_url('/mod/blerify/view.php', ['id' => $cm->id]),
-            get_string('issue_no_selection', 'blerify'),
-            null,
-            \core\output\notification::NOTIFY_WARNING
-        );
+    if (empty($targets)) {
+        redirect($viewurl, get_string('issue_no_selection', 'blerify'), null,
+            \core\output\notification::NOTIFY_WARNING);
     }
 
     $success = 0;
     $fail = 0;
 
-    foreach ($selectedusers as $userid) {
+    foreach ($targets as $userid) {
         $user = $DB->get_record('user', ['id' => $userid]);
         if (!$user || !is_enrolled($context, $userid)) {
             $fail++;
             continue;
         }
 
-        $existing = $credentialsmanager->get_credential_for_user($blerify->id, $userid);
-        if ($existing) {
+        $existing = $manager->get_credential_for_user($blerify->id, $userid);
+        if ($existing && $existing->status !== credentials::STATUS_ERROR) {
             continue;
         }
 
-        $now = time();
-        $credrecord = new \stdClass();
-        $credrecord->blerifyid = $blerify->id;
-        $credrecord->userid = $userid;
-        $credrecord->status = 'authorized';
-        $credrecord->timecreated = $now;
-        $credrecord->timemodified = $now;
-        $credrecord->id = $DB->insert_record('blerify_credentials', $credrecord);
+        // Queued rather than issued inline: selecting a whole cohort would
+        // otherwise put two API round trips per learner in this one request.
+        if ($existing) {
+            $DB->delete_records('blerify_credentials', ['id' => $existing->id]);
+        }
+
+        \mod_blerify\task\issue_credential::queue($blerify->id, $userid);
 
         \mod_blerify\event\credential_issued_manual::create([
             'context' => $context,
-            'objectid' => $credrecord->id,
+            'objectid' => $blerify->id,
             'relateduserid' => $userid,
         ])->trigger();
 
         $success++;
     }
 
-    if ($fail > 0 && $success > 0) {
-        $message = get_string('issue_error_partial', 'blerify', (object)['success' => $success, 'fail' => $fail]);
-        $type = \core\output\notification::NOTIFY_WARNING;
-    } else if ($fail > 0) {
-        $message = get_string('issue_error_partial', 'blerify', (object)['success' => $success, 'fail' => $fail]);
-        $type = \core\output\notification::NOTIFY_ERROR;
+    if ($fail > 0) {
+        $message = get_string('issue_error_partial', 'blerify',
+            (object)['success' => $success, 'fail' => $fail]);
+        $type = $success > 0
+            ? \core\output\notification::NOTIFY_WARNING
+            : \core\output\notification::NOTIFY_ERROR;
     } else {
         $message = get_string('issue_success', 'blerify', $success);
         $type = \core\output\notification::NOTIFY_SUCCESS;
     }
 
-    redirect(new moodle_url('/mod/blerify/view.php', ['id' => $cm->id]), $message, null, $type);
+    redirect($viewurl, $message, null, $type);
 }
 
 if (has_capability('mod/blerify:manage', $context)) {
-    $allcredentials = $credentialsmanager->get_all_credentials($blerify->id);
+
+    $allcredentials = $manager->get_all_credentials($blerify->id);
 
     $templatedata = [
         'activityname' => format_string($blerify->name),
-        'projectid' => $config ? $config->projectid : '-',
-        'templateid' => $config ? $config->templateid : '-',
+        'projectid' => blerify_get_project_id($course->id) ?: '-',
+        'templatename' => $blerify->templatename ?: $blerify->templateid,
+        'passgrade' => $blerify->passgrade,
         'hascredentials' => !empty($allcredentials),
         'credentials' => [],
         'cmid' => $cm->id,
@@ -197,31 +130,36 @@ if (has_capability('mod/blerify:manage', $context)) {
     ];
 
     foreach ($allcredentials as $cred) {
+        $isready = in_array($cred->status,
+            [credentials::STATUS_ISSUED, credentials::STATUS_CLAIMED], true);
+
         $templatedata['credentials'][] = [
             'fullname' => fullname($cred),
             'email' => $cred->email,
             'status' => get_string('status_' . $cred->status, 'blerify'),
-            'is_error' => ($cred->status === 'error'),
+            'errordetail' => $cred->errordetail ?: '',
+            'is_error' => ($cred->status === credentials::STATUS_ERROR),
+            'is_ready' => $isready,
             'userid' => $cred->userid,
             'credentialid' => $cred->credentialid ?: '-',
-            'date' => ($cred->status === 'assembled') ? userdate($cred->timemodified) : '-',
+            'date' => $cred->timeissued ? userdate($cred->timeissued) : '-',
+            'pdf_url' => $isready
+                ? (new moodle_url('/mod/blerify/pdf.php',
+                    ['id' => $cm->id, 'userid' => $cred->userid]))->out(false)
+                : '',
             'cmid' => $cm->id,
             'sesskey' => sesskey(),
         ];
     }
 
-    $enrolledusers = get_enrolled_users($context, 'mod/blerify:view', 0, 'u.*', 'u.lastname ASC');
-    $issuedusersids = [];
+    $issued = [];
     foreach ($allcredentials as $cred) {
-        $issuedusersids[$cred->userid] = true;
+        $issued[$cred->userid] = true;
     }
 
     $availableusers = [];
-    foreach ($enrolledusers as $user) {
-        if (isset($issuedusersids[$user->id])) {
-            continue;
-        }
-        if (has_capability('mod/blerify:manage', $context, $user)) {
+    foreach (get_enrolled_users($context, 'mod/blerify:view', 0, 'u.*', 'u.lastname ASC') as $user) {
+        if (isset($issued[$user->id]) || has_capability('mod/blerify:manage', $context, $user)) {
             continue;
         }
         $availableusers[] = [
@@ -239,99 +177,62 @@ if (has_capability('mod/blerify:manage', $context)) {
     echo $OUTPUT->footer();
 
 } else {
-    $credential = $credentialsmanager->get_credential_for_user($blerify->id, $USER->id);
 
-    $ticketmanager = new ticket_manager();
-
-    $smtpconfigured = !empty($CFG->smtphosts);
+    $credential = $manager->get_credential_for_user($blerify->id, $USER->id);
+    $status = $credential ? $credential->status : 'none';
 
     $templatedata = [
         'activityname' => format_string($blerify->name),
-        'has_credential' => !empty($credential),
-        'is_assembled' => false,
-        'is_processing' => false,
-        'is_error' => false,
-        'smtp_configured' => $smtpconfigured,
+        'templatename' => $blerify->templatename ?: '',
+        'passgrade' => $blerify->passgrade,
+        'is_processing' => ($status === credentials::STATUS_ISSUING
+            || $status === credentials::STATUS_PENDING),
+        'is_ready' => in_array($status,
+            [credentials::STATUS_ISSUED, credentials::STATUS_CLAIMED], true),
+        'is_claimed' => ($status === credentials::STATUS_CLAIMED),
+        'is_error' => ($status === credentials::STATUS_ERROR),
+        'not_yet' => ($status === 'none'),
         'cmid' => $cm->id,
+        'sesskey' => sesskey(),
     ];
 
-    if ($credential) {
-        switch ($credential->status) {
-            case 'assembled':
-                $templatedata['is_assembled'] = true;
-                $templatedata['credential_id'] = $credential->credentialid ?: '';
-                $templatedata['sesskey'] = sesskey();
-                break;
-            case 'error':
-            case 'authorized':
-                break;
-            default:
-                $templatedata['is_processing'] = true;
-                break;
-        }
+    if ($templatedata['not_yet']) {
+        $percentage = blerify_get_course_grade_percentage($course->id, $USER->id);
+        $templatedata['current_grade'] = ($percentage === null)
+            ? null
+            : format_float($percentage, 1);
     }
 
-    $reclaimrequested = optional_param('reclaim', 0, PARAM_BOOL);
-    if ($reclaimrequested) {
-        require_sesskey();
-    }
+    if ($templatedata['is_ready']) {
+        $templatedata['pdf_url'] = (new moodle_url('/mod/blerify/pdf.php',
+            ['id' => $cm->id]))->out(false);
+        $templatedata['download_url'] = (new moodle_url('/mod/blerify/pdf.php',
+            ['id' => $cm->id, 'download' => 1]))->out(false);
 
-    $needsclaim = (!$templatedata['is_assembled'] || $reclaimrequested) && !$templatedata['is_processing'];
-    $templatedata['show_claim'] = $needsclaim && $smtpconfigured;
-    $templatedata['show_smtp_warning'] = $needsclaim && !$smtpconfigured;
-    $templatedata['claimed_done'] = $templatedata['is_assembled'] && !$templatedata['show_claim'];
-    $templatedata['reclaim_url'] = (new moodle_url('/mod/blerify/view.php', ['id' => $cm->id]))->out(false);
-    $templatedata['sesskey'] = sesskey();
+        // Claiming registers the credential in the holder's wallet; until then it
+        // is issued but unclaimed, which is what the QR below resolves.
+        $templatedata['show_claim'] = !$templatedata['is_claimed'] && !empty($credential->code);
+        $templatedata['claim_requested'] = optional_param('claim', 0, PARAM_BOOL);
 
-    if ($templatedata['show_claim']) {
-        $ticket = $ticketmanager->get_or_create_ticket($USER->id, $blerify->id);
-
-        $claimurl = $CFG->wwwroot . '/mod/blerify/walletclaim.php/' . $ticket['token'];
-        $deeplinkurl = $credentialsmanager->build_deeplink_v2($claimurl);
-
-        $qrpng = qr_generator::generate($deeplinkurl);
-        $templatedata['qr_data_url'] = 'data:image/png;base64,' . $qrpng;
-        $templatedata['qr_expires_at'] = $ticket['expires_at'];
-
-        if ($ticket['is_new']) {
-            $templatedata['otp'] = $ticket['otp'];
-
-            require_once($CFG->dirroot . '/mod/blerify/locallib.php');
-            $emailsubject = get_string('otp_email_subject', 'blerify');
-            $emailbody = get_string('otp_email_body', 'blerify', $ticket['otp']);
-            $emailhtml = blerify_get_otp_email_html($ticket['otp']);
-            $sent = email_to_user($USER, \core_user::get_noreply_user(), $emailsubject, $emailbody, $emailhtml);
-            $templatedata['otp_email_failed'] = !$sent;
-        } else {
-            $templatedata['otp_previously_sent'] = true;
+        if ($templatedata['show_claim'] && $templatedata['claim_requested']) {
+            $deeplink = $manager->build_claim_deeplink($credential->code);
+            if ($deeplink !== '') {
+                $templatedata['deeplink_url'] = $deeplink;
+                $templatedata['qr_data_url'] = 'data:image/png;base64,' . qr_generator::generate($deeplink);
+            }
         }
 
-        $templatedata['resendotp_url'] = (new moodle_url('/mod/blerify/view.php', ['id' => $cm->id]))->out(false);
-        $templatedata['sesskey'] = sesskey();
-
-        $statusurl = new moodle_url('/mod/blerify/walletstatus.php');
-        $refreshurl = new moodle_url('/mod/blerify/view.php', ['id' => $cm->id]);
-
-        $PAGE->requires->js_call_amd('mod_blerify/wallet_qr', 'init', [[
-            'expiresAt' => $ticket['expires_at'],
-            'statusUrl' => $statusurl->out(false),
-            'sesskey' => sesskey(),
-            'cmid' => $cm->id,
-            'refreshUrl' => $refreshurl->out(false),
-            'since' => $credential ? (int)$credential->timemodified : 0,
-        ]]);
+        $templatedata['claim_url'] = (new moodle_url('/mod/blerify/view.php',
+            ['id' => $cm->id, 'claim' => 1]))->out(false);
     }
 
-    if ($templatedata['is_processing']) {
-        $statusurl = new moodle_url('/mod/blerify/walletstatus.php');
-        $refreshurl = new moodle_url('/mod/blerify/view.php', ['id' => $cm->id]);
-
-        $PAGE->requires->js_call_amd('mod_blerify/wallet_qr', 'init', [[
-            'expiresAt' => time() + 300,
-            'statusUrl' => $statusurl->out(false),
+    if ($templatedata['is_processing'] || ($templatedata['is_ready'] && !$templatedata['is_claimed'])) {
+        $PAGE->requires->js_call_amd('mod_blerify/status_poll', 'init', [[
+            'statusUrl' => (new moodle_url('/mod/blerify/status.php'))->out(false),
+            'refreshUrl' => $viewurl->out(false),
             'sesskey' => sesskey(),
             'cmid' => $cm->id,
-            'refreshUrl' => $refreshurl->out(false),
+            'status' => $status,
         ]]);
     }
 

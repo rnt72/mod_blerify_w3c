@@ -16,7 +16,7 @@
 
 /**
  * Credentials management for mod_blerify.
- * Handles issuing, storing, and retrieving credential records.
+ * Drives the service-account issuance flow and stores its result.
  *
  * @package    mod_blerify
  * @copyright  Blerify <dev@blerify.com>
@@ -29,40 +29,214 @@ defined('MOODLE_INTERNAL') || die();
 
 use mod_blerify\client\client;
 use mod_blerify\apirest\apirest;
-use mod_blerify\wallet\ticket_manager;
+use mod_blerify\task\poll_credential;
 
 class credentials {
 
+    /** Queued locally, not sent to Blerify yet. */
+    const STATUS_PENDING = 'pending';
+    /** Created and approved; Blerify is still assembling it. */
+    const STATUS_ISSUING = 'issuing';
+    /** Issued (API status SENT): the PDF exists and the claim code is available. */
+    const STATUS_ISSUED = 'issued';
+    /** Claimed into a wallet (API status DELIVERED). */
+    const STATUS_CLAIMED = 'claimed';
+    /** Issuance failed. */
+    const STATUS_ERROR = 'error';
+
     /**
-     * Issue a W3C credential for a user in a blerify activity.
+     * Create and approve a credential for a user, then queue the polling task.
+     *
+     * Issuance is asynchronous: this returns as soon as Blerify accepts the
+     * approval, with the record left in STATUS_ISSUING.
      *
      * @param object $blerifyrecord The blerify activity record.
-     * @param object $config The blerify_configs record.
      * @param object $user The Moodle user object.
-     * @param string|null $walletdid Optional wallet DID override.
-     * @return object The blerify_credentials DB record.
+     * @return object The blerify_credentials record.
      * @throws \Exception
      */
-    public function issue_credential($blerifyrecord, $config, $user, $walletdid = null) {
-        if (empty($walletdid)) {
-            $walletmanager = new ticket_manager();
-            $walletdid = $walletmanager->get_did($user->id);
-        }
+    public function request_issuance($blerifyrecord, $user) {
+        global $DB;
 
         $lock = $this->get_issue_lock($blerifyrecord->id, $user->id);
         try {
-            $credrecord = $this->get_or_create_record($blerifyrecord->id, $user->id, $walletdid);
+            $credrecord = $this->get_or_create_record($blerifyrecord->id, $user->id);
 
-            if ($credrecord->status === 'assembled') {
+            if (in_array($credrecord->status, [self::STATUS_ISSUED, self::STATUS_CLAIMED], true)) {
                 return $credrecord;
             }
 
-            $this->process_issuance($credrecord, $config, $user, $walletdid);
+            try {
+                $api = new apirest(new client());
 
-            return $credrecord;
+                $projectid = $this->get_project_id($blerifyrecord);
+
+                if (empty($credrecord->credentialid)) {
+                    $credrecord->credentialid = $api->create_credential(
+                        $user, $blerifyrecord->templateid, $projectid);
+                }
+
+                $api->approve_credential(
+                    $projectid,
+                    $credrecord->credentialid,
+                    $blerifyrecord->templateid,
+                    $this->get_receiver_lang($user)
+                );
+
+                $credrecord->status = self::STATUS_ISSUING;
+                $credrecord->remotestatus = 'PENDING';
+                $credrecord->errordetail = null;
+                $credrecord->timemodified = time();
+                $DB->update_record('blerify_credentials', $credrecord);
+
+            } catch (\Exception $e) {
+                $credrecord->status = self::STATUS_ERROR;
+                $credrecord->errordetail = $e->getMessage();
+                $credrecord->timemodified = time();
+                $DB->update_record('blerify_credentials', $credrecord);
+                debugging('Blerify issuance failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
+                throw $e;
+            }
         } finally {
             $lock->release();
         }
+
+        poll_credential::queue($credrecord->id);
+
+        return $credrecord;
+    }
+
+    /**
+     * Read the credential state from Blerify and store what changed.
+     *
+     * @param object $credrecord The blerify_credentials record.
+     * @return object The refreshed record.
+     * @throws \Exception
+     */
+    public function refresh($credrecord) {
+        global $DB;
+
+        if (empty($credrecord->credentialid)) {
+            return $credrecord;
+        }
+
+        $blerifyrecord = $DB->get_record('blerify', ['id' => $credrecord->blerifyid], '*', MUST_EXIST);
+
+        $api = new apirest(new client());
+        $result = $api->poll_credential(
+            $this->get_project_id($blerifyrecord), $credrecord->credentialid, $blerifyrecord->templateid);
+
+        return $this->apply_poll_result($credrecord, $result);
+    }
+
+    /**
+     * Map an API polling result onto the local record.
+     *
+     * @param object $credrecord
+     * @param array $result As returned by apirest::poll_credential().
+     * @return object The refreshed record.
+     */
+    private function apply_poll_result($credrecord, array $result) {
+        global $DB;
+
+        $now = time();
+        $before = clone $credrecord;
+
+        $credrecord->remotestatus = $result['status'];
+
+        if (!empty($result['code'])) {
+            $credrecord->code = $result['code'];
+        }
+
+        switch ($result['status']) {
+            case 'SENT':
+                if ($credrecord->status !== self::STATUS_ISSUED) {
+                    $credrecord->status = self::STATUS_ISSUED;
+                    $credrecord->timeissued = $credrecord->timeissued ?: $now;
+                }
+                break;
+            case 'DELIVERED':
+                if ($credrecord->status !== self::STATUS_CLAIMED) {
+                    $credrecord->status = self::STATUS_CLAIMED;
+                    $credrecord->timeissued = $credrecord->timeissued ?: $now;
+                    $credrecord->timeclaimed = $now;
+                }
+                break;
+            default:
+                $credrecord->status = self::STATUS_ISSUING;
+                break;
+        }
+
+        // Only touch the record when something actually moved: the page reloads on
+        // a change, so bumping timemodified on every poll would reload it forever.
+        $changed = ($before->status !== $credrecord->status)
+            || ($before->remotestatus !== $credrecord->remotestatus)
+            || ($before->code !== $credrecord->code);
+
+        if ($changed) {
+            $credrecord->timemodified = $now;
+            $DB->update_record('blerify_credentials', $credrecord);
+        }
+
+        return $credrecord;
+    }
+
+    /**
+     * Fetch a fresh signed PDF URL for a credential.
+     *
+     * The URLs Blerify returns are valid for roughly a minute, so they are read
+     * on demand instead of being stored.
+     *
+     * @param object $credrecord
+     * @return array ['pdf' => string|null, 'thumbnail' => string|null]
+     * @throws \Exception
+     */
+    public function get_asset_urls($credrecord) {
+        global $DB;
+
+        if (empty($credrecord->credentialid)) {
+            return ['pdf' => null, 'thumbnail' => null];
+        }
+
+        $blerifyrecord = $DB->get_record('blerify', ['id' => $credrecord->blerifyid], '*', MUST_EXIST);
+
+        $api = new apirest(new client());
+        $result = $api->poll_credential(
+            $this->get_project_id($blerifyrecord), $credrecord->credentialid, $blerifyrecord->templateid);
+
+        $this->apply_poll_result($credrecord, $result);
+
+        return ['pdf' => $result['pdf'], 'thumbnail' => $result['thumbnail']];
+    }
+
+    /**
+     * The language Blerify should use for the receiver's notification.
+     *
+     * @param object $user
+     * @return string
+     */
+    private function get_receiver_lang($user) {
+        $lang = !empty($user->lang) ? $user->lang : current_language();
+        return substr($lang, 0, 2);
+    }
+
+    /**
+     * The project this activity issues under.
+     *
+     * @param object $blerifyrecord
+     * @return string
+     * @throws \moodle_exception When no project is configured anywhere.
+     */
+    private function get_project_id($blerifyrecord) {
+        global $CFG;
+        require_once($CFG->dirroot . '/mod/blerify/locallib.php');
+
+        $projectid = blerify_get_project_id($blerifyrecord->course);
+        if ($projectid === '') {
+            throw new \moodle_exception('error_no_project_id', 'blerify');
+        }
+
+        return $projectid;
     }
 
     private function get_issue_lock($blerifyid, $userid) {
@@ -74,16 +248,20 @@ class credentials {
         return $lock;
     }
 
-    private function get_or_create_record($blerifyid, $userid, $walletdid = null) {
+    private function get_or_create_record($blerifyid, $userid) {
         global $DB;
+
+        $existing = $DB->get_record('blerify_credentials',
+            ['blerifyid' => $blerifyid, 'userid' => $userid]);
+        if ($existing) {
+            return $existing;
+        }
 
         $now = time();
         $credrecord = new \stdClass();
         $credrecord->blerifyid = $blerifyid;
         $credrecord->userid = $userid;
-        $credrecord->wallet_did = $walletdid;
-        $credrecord->status = 'pending';
-        $credrecord->laststep = null;
+        $credrecord->status = self::STATUS_PENDING;
         $credrecord->timecreated = $now;
         $credrecord->timemodified = $now;
 
@@ -93,140 +271,6 @@ class credentials {
         } catch (\dml_write_exception $e) {
             return $DB->get_record('blerify_credentials',
                 ['blerifyid' => $blerifyid, 'userid' => $userid], '*', MUST_EXIST);
-        }
-    }
-
-    private function process_issuance($credrecord, $config, $user, $walletdid) {
-        global $DB;
-
-        $resume = null;
-        if (!empty($credrecord->credentialid) && !empty($credrecord->laststep)
-                && $credrecord->laststep !== 'assembled') {
-            $resume = [
-                'credentialid' => $credrecord->credentialid,
-                'laststep' => $credrecord->laststep,
-                'signingmessage' => $credrecord->signingmessage ?? null,
-                'signature' => $credrecord->signature ?? null,
-                'publickey' => $credrecord->publickey ?? null,
-            ];
-        }
-
-        try {
-            $api = new apirest(new client());
-            $result = $api->issue_credential(
-                $user,
-                $config->templateid,
-                $config->projectid,
-                $walletdid,
-                $resume
-            );
-
-            $credrecord->credentialid = $result['credential_id'];
-            $credrecord->status = $result['status'];
-            $credrecord->laststep = 'assembled';
-            $credrecord->wallet_did = $walletdid;
-            $credrecord->signingmessage = null;
-            $credrecord->signature = null;
-            $credrecord->publickey = null;
-            $credrecord->errordetail = null;
-            $credrecord->timemodified = time();
-
-            if (!empty($result['assemble_raw'])) {
-                $credrecord->deeplinkurl = $result['assemble_raw'];
-            }
-
-            $DB->update_record('blerify_credentials', $credrecord);
-
-            return $result;
-
-        } catch (\Exception $e) {
-            $credrecord->status = 'error';
-            if ($e instanceof \mod_blerify\apirest\issuance_exception) {
-                if (!empty($e->credentialid)) {
-                    $credrecord->credentialid = $e->credentialid;
-                }
-                if (!empty($e->laststep)) {
-                    $credrecord->laststep = $e->laststep;
-                }
-                $credrecord->signingmessage = $e->signingmessage;
-                $credrecord->signature = $e->signature;
-                $credrecord->publickey = $e->publickey;
-            }
-            $credrecord->errordetail = 'issuance_failed';
-            $credrecord->timemodified = time();
-            $DB->update_record('blerify_credentials', $credrecord);
-            debugging('Blerify issuance failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
-            throw $e;
-        }
-    }
-
-    /**
-     * Issue a credential and return the assemble data directly.
-     *
-     * @param object $blerifyrecord The blerify activity record.
-     * @param object $config The blerify_configs record.
-     * @param object $user The Moodle user object.
-     * @param string $walletdid The wallet DID.
-     * @return array {credential_id, assemble_data}
-     * @throws \Exception
-     */
-    public function issue_credential_w3c($blerifyrecord, $config, $user, $walletdid) {
-        $lock = $this->get_issue_lock($blerifyrecord->id, $user->id);
-        try {
-            $credrecord = $this->get_or_create_record($blerifyrecord->id, $user->id, $walletdid);
-            $credrecord->wallet_did = $walletdid;
-
-            $result = $this->process_issuance($credrecord, $config, $user, $walletdid);
-
-            return [
-                'credential_id' => $result['credential_id'],
-                'assemble_raw' => $result['assemble_raw'] ?? '',
-            ];
-        } finally {
-            $lock->release();
-        }
-    }
-
-    /**
-     * Re-issue a credential for a user that already has one.
-     * Calls the API to create a new credential and updates the existing DB record.
-     *
-     * @param object $blerifyrecord The blerify activity record.
-     * @param object $config The blerify_configs record.
-     * @param object $user The Moodle user object.
-     * @param string $walletdid The wallet DID.
-     * @param object $existing The existing blerify_credentials record.
-     * @return array {credential_id, assemble_data}
-     * @throws \Exception
-     */
-    public function reissue_credential_w3c($blerifyrecord, $config, $user, $walletdid, $existing) {
-        global $DB;
-
-        $lock = $this->get_issue_lock($blerifyrecord->id, $user->id);
-        try {
-            $existing = $DB->get_record('blerify_credentials', ['id' => $existing->id], '*', MUST_EXIST);
-            $existing->wallet_did = $walletdid;
-
-            if ($existing->status === 'assembled') {
-                $existing->credentialid = null;
-                $existing->laststep = null;
-                $existing->signingmessage = null;
-                $existing->signature = null;
-                $existing->publickey = null;
-            }
-
-            $existing->status = 'pending';
-            $existing->timemodified = time();
-            $DB->update_record('blerify_credentials', $existing);
-
-            $result = $this->process_issuance($existing, $config, $user, $walletdid);
-
-            return [
-                'credential_id' => $result['credential_id'],
-                'assemble_raw' => $result['assemble_raw'] ?? '',
-            ];
-        } finally {
-            $lock->release();
         }
     }
 
@@ -259,7 +303,7 @@ class credentials {
                   FROM {blerify_credentials} bc
                   JOIN {user} u ON u.id = bc.userid
                  WHERE bc.blerifyid = :blerifyid
-                 ORDER BY bc.timecreated DESC";
+              ORDER BY bc.timecreated DESC";
 
         return $DB->get_records_sql($sql, ['blerifyid' => $blerifyid]);
     }
@@ -267,12 +311,15 @@ class credentials {
     /**
      * Detect environment from the service account token_uri.
      *
-     * @return string 'demo' or 'production'.
+     * @return string
      */
     public function get_environment(): string {
-        $sa = \mod_blerify\local\service_account::get_decoded();
+        $sa = service_account::get_decoded();
         if ($sa && isset($sa['token_uri'])) {
-            $host = parse_url($sa['token_uri'], PHP_URL_HOST);
+            $host = strtolower((string) parse_url($sa['token_uri'], PHP_URL_HOST));
+            if (strpos($host, 'api.staging.') !== false) {
+                return 'staging';
+            }
             if (strpos($host, 'api.demo.') !== false) {
                 return 'demo';
             }
@@ -283,26 +330,52 @@ class credentials {
     /**
      * Get the wallet hostname for the current environment.
      *
-     * @return string 'demo.wallet.blerify.com' or 'wallet.blerify.com'.
+     * @return string
      */
     public function get_wallet_host(): string {
-        if ($this->get_environment() === 'demo') {
+        if (in_array($this->get_environment(), ['demo', 'staging'], true)) {
             return 'demo.wallet.blerify.com';
         }
         return 'wallet.blerify.com';
     }
 
     /**
-     * Build a deeplink URL for the wallet app.
+     * Get the wallet platform URL for the current environment.
      *
-     * @param string $claimurl The walletclaim.php endpoint URL with token.
-     * @return string The complete deeplink URL.
+     * @return string
      */
-    public function build_deeplink_v2(string $claimurl): string {
-        $wallethost = $this->get_wallet_host();
-        $env = $this->get_environment();
+    public function get_wallet_platform(): string {
+        switch ($this->get_environment()) {
+            case 'staging':
+                return 'https://wallet.staging.blerify.com';
+            case 'demo':
+                return 'https://wallet.demo.blerify.com';
+            default:
+                return 'https://wallet.blerify.com';
+        }
+    }
 
-        return 'https://' . $wallethost . '/' . $env .
-            '/downloadW3C?claim_mode=OTP&resource_link=' . urlencode($claimurl);
+    /**
+     * Build the wallet deeplink a receiver follows to claim a credential.
+     *
+     * @param string $code The claim code returned by polling.
+     * @return string The deeplink URL, or '' when no code is available yet.
+     */
+    public function build_claim_deeplink(string $code): string {
+        if ($code === '') {
+            return '';
+        }
+
+        $sa = service_account::get_decoded();
+        $params = [
+            'code' => $code,
+            'organizationId' => isset($sa['organization_id']) ? $sa['organization_id'] : '',
+        ];
+
+        $params['organizationName'] = get_site()->fullname;
+        $params['platform'] = $this->get_wallet_platform();
+
+        return 'https://' . $this->get_wallet_host() . '/connect?' .
+            http_build_query($params, '', '&', PHP_QUERY_RFC3986);
     }
 }

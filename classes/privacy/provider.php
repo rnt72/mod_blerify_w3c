@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Privacy provider for mod_blerify (GDPR compliance).
+ * Privacy provider for mod_blerify.
  *
  * @package    mod_blerify
  * @copyright  Blerify <dev@blerify.com>
@@ -30,6 +30,7 @@ use core_privacy\local\metadata\collection;
 use core_privacy\local\request\approved_contextlist;
 use core_privacy\local\request\approved_userlist;
 use core_privacy\local\request\contextlist;
+use core_privacy\local\request\transform;
 use core_privacy\local\request\userlist;
 use core_privacy\local\request\writer;
 
@@ -49,29 +50,20 @@ class provider implements
             'userid' => 'privacy:metadata:blerify_credentials:userid',
             'credentialid' => 'privacy:metadata:blerify_credentials:credentialid',
             'status' => 'privacy:metadata:blerify_credentials:status',
-            'wallet_did' => 'privacy:metadata:blerify_credentials:wallet_did',
+            'code' => 'privacy:metadata:blerify_credentials:code',
+            'timecreated' => 'privacy:metadata:blerify_credentials:timecreated',
         ], 'privacy:metadata:blerify_credentials');
 
-        $collection->add_database_table('blerify_wallet_dids', [
-            'userid' => 'privacy:metadata:blerify_wallet_dids:userid',
-            'did' => 'privacy:metadata:blerify_wallet_dids:did',
-        ], 'privacy:metadata:blerify_wallet_dids');
-
-        $collection->add_database_table('blerify_wallet_tickets', [
-            'userid' => 'privacy:metadata:blerify_wallet_tickets:userid',
-        ], 'privacy:metadata:blerify_wallet_tickets');
-
-        $collection->add_database_table('blerify_wallet_lockouts', [
-            'userid' => 'privacy:metadata:blerify_wallet_lockouts:userid',
-            'failcount' => 'privacy:metadata:blerify_wallet_lockouts:failcount',
-            'lockeduntil' => 'privacy:metadata:blerify_wallet_lockouts:lockeduntil',
-        ], 'privacy:metadata:blerify_wallet_lockouts');
+        $collection->add_external_location_link('blerify_api', [
+            'email' => 'privacy:metadata:blerify_api:email',
+            'fullname' => 'privacy:metadata:blerify_api:fullname',
+        ], 'privacy:metadata:blerify_api');
 
         return $collection;
     }
 
     /**
-     * Get the list of contexts that contain user information.
+     * Contexts holding data for a user.
      *
      * @param int $userid
      * @return contextlist
@@ -82,39 +74,14 @@ class provider implements
         $sql = "SELECT ctx.id
                   FROM {context} ctx
                   JOIN {course_modules} cm ON cm.id = ctx.instanceid AND ctx.contextlevel = :contextlevel
-                  JOIN {modules} m ON m.id = cm.module AND m.name = 'blerify'
+                  JOIN {modules} m ON m.id = cm.module AND m.name = :modname
                   JOIN {blerify} b ON b.id = cm.instance
                   JOIN {blerify_credentials} bc ON bc.blerifyid = b.id
                  WHERE bc.userid = :userid";
 
         $contextlist->add_from_sql($sql, [
             'contextlevel' => CONTEXT_MODULE,
-            'userid' => $userid,
-        ]);
-
-        $sql = "SELECT ctx.id
-                  FROM {context} ctx
-                  JOIN {course_modules} cm ON cm.id = ctx.instanceid AND ctx.contextlevel = :contextlevel
-                  JOIN {modules} m ON m.id = cm.module AND m.name = 'blerify'
-                  JOIN {blerify} b ON b.id = cm.instance
-                  JOIN {blerify_wallet_tickets} bt ON bt.blerifyid = b.id
-                 WHERE bt.userid = :userid";
-
-        $contextlist->add_from_sql($sql, [
-            'contextlevel' => CONTEXT_MODULE,
-            'userid' => $userid,
-        ]);
-
-        $sql = "SELECT ctx.id
-                  FROM {context} ctx
-                  JOIN {course_modules} cm ON cm.id = ctx.instanceid AND ctx.contextlevel = :contextlevel
-                  JOIN {modules} m ON m.id = cm.module AND m.name = 'blerify'
-                  JOIN {blerify} b ON b.id = cm.instance
-                  JOIN {blerify_wallet_lockouts} bl ON bl.blerifyid = b.id
-                 WHERE bl.userid = :userid";
-
-        $contextlist->add_from_sql($sql, [
-            'contextlevel' => CONTEXT_MODULE,
+            'modname' => 'blerify',
             'userid' => $userid,
         ]);
 
@@ -122,7 +89,7 @@ class provider implements
     }
 
     /**
-     * Get the list of users within a context.
+     * Users holding data in a context.
      *
      * @param userlist $userlist
      */
@@ -134,28 +101,10 @@ class provider implements
         }
 
         $sql = "SELECT bc.userid
-                  FROM {blerify_credentials} bc
-                  JOIN {blerify} b ON b.id = bc.blerifyid
-                  JOIN {course_modules} cm ON cm.instance = b.id
+                  FROM {course_modules} cm
                   JOIN {modules} m ON m.id = cm.module AND m.name = 'blerify'
-                 WHERE cm.id = :cmid";
-
-        $userlist->add_from_sql('userid', $sql, ['cmid' => $context->instanceid]);
-
-        $sql = "SELECT bt.userid
-                  FROM {blerify_wallet_tickets} bt
-                  JOIN {blerify} b ON b.id = bt.blerifyid
-                  JOIN {course_modules} cm ON cm.instance = b.id
-                  JOIN {modules} m ON m.id = cm.module AND m.name = 'blerify'
-                 WHERE cm.id = :cmid";
-
-        $userlist->add_from_sql('userid', $sql, ['cmid' => $context->instanceid]);
-
-        $sql = "SELECT bl.userid
-                  FROM {blerify_wallet_lockouts} bl
-                  JOIN {blerify} b ON b.id = bl.blerifyid
-                  JOIN {course_modules} cm ON cm.instance = b.id
-                  JOIN {modules} m ON m.id = cm.module AND m.name = 'blerify'
+                  JOIN {blerify} b ON b.id = cm.instance
+                  JOIN {blerify_credentials} bc ON bc.blerifyid = b.id
                  WHERE cm.id = :cmid";
 
         $userlist->add_from_sql('userid', $sql, ['cmid' => $context->instanceid]);
@@ -190,61 +139,15 @@ class provider implements
                 $data = (object) [
                     'credentialid' => $credential->credentialid,
                     'status' => $credential->status,
-                    'wallet_did' => $credential->wallet_did,
-                    'timecreated' => \core_privacy\local\request\transform::datetime($credential->timecreated),
+                    'remotestatus' => $credential->remotestatus,
+                    'timeissued' => $credential->timeissued
+                        ? transform::datetime($credential->timeissued) : null,
+                    'timeclaimed' => $credential->timeclaimed
+                        ? transform::datetime($credential->timeclaimed) : null,
+                    'timecreated' => transform::datetime($credential->timecreated),
                 ];
                 writer::with_context($context)->export_data(
                     [get_string('pluginname', 'blerify'), 'credentials'],
-                    $data
-                );
-            }
-
-            $tickets = $DB->get_records('blerify_wallet_tickets', [
-                'blerifyid' => $cm->instance,
-                'userid' => $userid,
-            ]);
-
-            foreach ($tickets as $ticket) {
-                $data = (object) [
-                    'consumed' => $ticket->consumed,
-                    'expires_at' => \core_privacy\local\request\transform::datetime($ticket->expires_at),
-                    'timecreated' => \core_privacy\local\request\transform::datetime($ticket->timecreated),
-                ];
-                writer::with_context($context)->export_data(
-                    [get_string('pluginname', 'blerify'), 'wallet_tickets'],
-                    $data
-                );
-            }
-
-            $lockouts = $DB->get_records('blerify_wallet_lockouts', [
-                'blerifyid' => $cm->instance,
-                'userid' => $userid,
-            ]);
-
-            foreach ($lockouts as $lockout) {
-                $data = (object) [
-                    'failcount' => $lockout->failcount,
-                    'lockeduntil' => \core_privacy\local\request\transform::datetime($lockout->lockeduntil),
-                    'timemodified' => \core_privacy\local\request\transform::datetime($lockout->timemodified),
-                ];
-                writer::with_context($context)->export_data(
-                    [get_string('pluginname', 'blerify'), 'wallet_lockouts'],
-                    $data
-                );
-            }
-        }
-
-        $walletdid = $DB->get_record('blerify_wallet_dids', ['userid' => $userid]);
-        if ($walletdid) {
-            $contexts = $contextlist->get_contexts();
-            $firstcontext = reset($contexts);
-            if ($firstcontext) {
-                $data = (object) [
-                    'did' => $walletdid->did,
-                    'timecreated' => \core_privacy\local\request\transform::datetime($walletdid->timecreated),
-                ];
-                writer::with_context($firstcontext)->export_data(
-                    [get_string('pluginname', 'blerify'), 'wallet_did'],
                     $data
                 );
             }
@@ -252,7 +155,7 @@ class provider implements
     }
 
     /**
-     * Delete all data for all users in a context.
+     * Delete all data in a context.
      *
      * @param \context $context
      */
@@ -268,13 +171,11 @@ class provider implements
             return;
         }
 
-        $DB->delete_records('blerify_wallet_tickets', ['blerifyid' => $cm->instance]);
-        $DB->delete_records('blerify_wallet_lockouts', ['blerifyid' => $cm->instance]);
         $DB->delete_records('blerify_credentials', ['blerifyid' => $cm->instance]);
     }
 
     /**
-     * Delete data for a specific user.
+     * Delete a user's data in the approved contexts.
      *
      * @param approved_contextlist $contextlist
      */
@@ -293,25 +194,15 @@ class provider implements
                 continue;
             }
 
-            $DB->delete_records('blerify_wallet_tickets', [
-                'blerifyid' => $cm->instance,
-                'userid' => $userid,
-            ]);
-            $DB->delete_records('blerify_wallet_lockouts', [
-                'blerifyid' => $cm->instance,
-                'userid' => $userid,
-            ]);
             $DB->delete_records('blerify_credentials', [
                 'blerifyid' => $cm->instance,
                 'userid' => $userid,
             ]);
         }
-
-        $DB->delete_records('blerify_wallet_dids', ['userid' => $userid]);
     }
 
     /**
-     * Delete data for users in a context.
+     * Delete data for several users in one context.
      *
      * @param approved_userlist $userlist
      */
@@ -334,29 +225,10 @@ class provider implements
             return;
         }
 
-        list($insql, $inparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
-        $inparams['blerifyid'] = $cm->instance;
+        list($insql, $params) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
+        $params['blerifyid'] = $cm->instance;
 
-        $DB->delete_records_select(
-            'blerify_wallet_tickets',
-            "blerifyid = :blerifyid AND userid $insql",
-            $inparams
-        );
-
-        $DB->delete_records_select(
-            'blerify_wallet_lockouts',
-            "blerifyid = :blerifyid AND userid $insql",
-            $inparams
-        );
-
-        $DB->delete_records_select(
-            'blerify_credentials',
-            "blerifyid = :blerifyid AND userid $insql",
-            $inparams
-        );
-
-        foreach ($userids as $uid) {
-            $DB->delete_records('blerify_wallet_dids', ['userid' => $uid]);
-        }
+        $DB->delete_records_select('blerify_credentials',
+            "blerifyid = :blerifyid AND userid $insql", $params);
     }
 }

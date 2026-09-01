@@ -174,6 +174,24 @@ class client {
             return $this->accesstoken;
         }
 
+        $cache = \cache::make('mod_blerify', 'accesstokens');
+        $cachekey = hash('sha256', $this->clientid . "\0" . $this->organizationid . "\0" . $this->tokenuri);
+        $cached = $cache->get($cachekey);
+
+        if (is_array($cached) && !empty($cached['token'])
+                && !empty($cached['expiresat']) && (int)$cached['expiresat'] > (time() + 60)) {
+            try {
+                $encrypted = base64_decode($cached['token'], true);
+                if ($encrypted !== false) {
+                    $this->accesstoken = \core\encryption::decrypt($encrypted);
+                    $this->tokenexpiry = (int)$cached['expiresat'];
+                    return $this->accesstoken;
+                }
+            } catch (\Exception $e) {
+                $cache->delete($cachekey);
+            }
+        }
+
         $jwt = $this->create_jwt();
 
         $postfields = [
@@ -205,6 +223,14 @@ class client {
         $this->accesstoken = $tokendata['access_token'];
         $expiresin = isset($tokendata['expires_in']) ? (int)$tokendata['expires_in'] : 3600;
         $this->tokenexpiry = time() + $expiresin;
+
+        if (!\core\encryption::key_exists()) {
+            \core\encryption::create_key();
+        }
+        $cache->set($cachekey, [
+            'token' => base64_encode(\core\encryption::encrypt($this->accesstoken)),
+            'expiresat' => $this->tokenexpiry,
+        ]);
 
         return $this->accesstoken;
     }

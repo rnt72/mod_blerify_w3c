@@ -17,6 +17,9 @@
 /**
  * Credential status endpoint for browser polling.
  *
+ * Issuance is asynchronous, so the page polls this while the credential is
+ * being assembled and once more after the learner claims it in the wallet.
+ *
  * @package    mod_blerify
  * @copyright  Blerify <dev@blerify.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -26,7 +29,10 @@ define('AJAX_SCRIPT', true);
 
 require_once('../../config.php');
 
-use mod_blerify\wallet\ticket_manager;
+use mod_blerify\local\credentials;
+
+/** Do not call the API more often than this, however fast the browser polls. */
+const BLERIFY_REFRESH_INTERVAL = 3;
 
 require_login(0, false);
 require_sesskey();
@@ -51,14 +57,28 @@ if (!is_enrolled($context, $USER->id, '', true)) {
     exit;
 }
 
-$manager = new ticket_manager();
-$status = $manager->get_ticket_status($USER->id, $cm->instance);
+$manager = new credentials();
+$credential = $manager->get_credential_for_user($cm->instance, $USER->id);
 
-$updated = 0;
-$credential = $DB->get_record('blerify_credentials',
-    ['blerifyid' => $cm->instance, 'userid' => $USER->id], 'timemodified');
-if ($credential) {
-    $updated = (int)$credential->timemodified;
+if (!$credential) {
+    echo json_encode(['status' => 'none']);
+    exit;
 }
 
-echo json_encode(['status' => $status, 'updated' => $updated]);
+$pending = in_array($credential->status,
+    [credentials::STATUS_ISSUING, credentials::STATUS_ISSUED], true);
+
+if ($pending && (time() - (int)$credential->timemodified) >= BLERIFY_REFRESH_INTERVAL) {
+    try {
+        $credential = $manager->refresh($credential);
+    } catch (\Exception $e) {
+        debugging('Blerify: status refresh failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
+    }
+}
+
+echo json_encode([
+    'status' => $credential->status,
+    'remotestatus' => $credential->remotestatus,
+    'hascode' => !empty($credential->code),
+    'updated' => (int)$credential->timemodified,
+]);

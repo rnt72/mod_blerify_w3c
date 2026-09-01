@@ -16,7 +16,8 @@
 
 /**
  * Activity instance form for mod_blerify.
- * projectId and templateId are loaded automatically from admin config.
+ * The project comes from the course configuration; the teacher picks the
+ * template to issue from the ones available in that project.
  *
  * @package    mod_blerify
  * @copyright  Blerify <dev@blerify.com>
@@ -26,6 +27,8 @@
 defined('MOODLE_INTERNAL') || die('Direct access to this script is forbidden.');
 
 require_once($CFG->dirroot . '/course/moodleform_mod.php');
+require_once($CFG->dirroot . '/mod/blerify/locallib.php');
+
 
 class mod_blerify_mod_form extends moodleform_mod {
 
@@ -33,48 +36,101 @@ class mod_blerify_mod_form extends moodleform_mod {
      * Define the form elements.
      */
     public function definition() {
-        global $DB, $COURSE;
+        global $COURSE;
 
         $mform = $this->_form;
 
-        $config = $DB->get_record('blerify_configs', ['courseid' => $COURSE->id]);
+        $projectid = blerify_get_project_id($COURSE->id);
 
         $mform->addElement('header', 'general', get_string('general', 'form'));
 
-        if (!$config) {
-            $mform->addElement('static', 'noconfig', '',
-                html_writer::div(get_string('error_no_config_for_course', 'blerify'), 'alert alert-danger'));
-
-            $mform->addElement('hidden', 'name', '');
-            $mform->setType('name', PARAM_TEXT);
-
-            $this->standard_coursemodule_elements();
-            $this->add_action_buttons(true, false);
+        if ($projectid === '') {
+            $this->add_blocked_form(get_string('error_no_project_id', 'blerify'));
             return;
         }
 
-        $mform->addElement('text', 'name', get_string('name'), ['size' => '64']);
+        try {
+            $templates = blerify_get_templates($projectid);
+        } catch (\Exception $e) {
+            debugging('Blerify: could not list templates: ' . $e->getMessage(), DEBUG_DEVELOPER);
+            $this->add_blocked_form(get_string('error_templates_unavailable', 'blerify'));
+            return;
+        }
+
+        if (empty($templates)) {
+            $this->add_blocked_form(get_string('error_no_templates', 'blerify'));
+            return;
+        }
+
+        $mform->addElement('text', 'name', get_string('certificatename', 'blerify'), ['size' => '64']);
         $mform->setType('name', PARAM_TEXT);
         $mform->addRule('name', null, 'required', null, 'client');
         $mform->addRule('name', get_string('maximumchars', '', 255), 'maxlength', 255, 'client');
+        $mform->addHelpButton('name', 'certificatename', 'blerify');
 
         $mform->addElement('header', 'blerifysettings', get_string('blerifysettings', 'blerify'));
 
-        $mform->addElement('static', 'configinfo', get_string('config_name', 'blerify'),
-            format_string($config->name));
-        $mform->addElement('static', 'projectidinfo', get_string('projectid', 'blerify'),
-            html_writer::tag('code', $config->projectid));
-        $mform->addElement('static', 'templateidinfo', get_string('templateid', 'blerify'),
-            html_writer::tag('code', $config->templateid));
+        $options = [];
+        foreach ($templates as $template) {
+            $options[$template['id']] = $template['title'];
+        }
+        $mform->addElement('select', 'templateid', get_string('templatetoissue', 'blerify'), $options);
+        $mform->addRule('templateid', null, 'required', null, 'client');
+        $mform->addHelpButton('templateid', 'templatetoissue', 'blerify');
 
-        $mform->addElement('hidden', 'configid', $config->id);
-        $mform->setType('configid', PARAM_INT);
+        // Keeps the chosen title available for display without calling the API again.
+        $mform->addElement('hidden', 'templatename', '');
+        $mform->setType('templatename', PARAM_TEXT);
+
+        $mform->addElement('static', 'projectidinfo', get_string('projectid', 'blerify'),
+            html_writer::tag('code', $projectid));
 
         $mform->addElement('checkbox', 'completionissue', get_string('completionissue', 'blerify'));
         $mform->setDefault('completionissue', 1);
         $mform->addHelpButton('completionissue', 'completionissue', 'blerify');
 
+        $mform->addElement('text', 'passgrade', get_string('passgrade', 'blerify'), ['size' => '4']);
+        $mform->setType('passgrade', PARAM_INT);
+        $mform->setDefault('passgrade', 70);
+        $mform->addHelpButton('passgrade', 'passgrade', 'blerify');
+        $mform->hideIf('passgrade', 'completionissue', 'notchecked');
+
         $this->standard_coursemodule_elements();
         $this->add_action_buttons();
+    }
+
+    /**
+     * Render a form that only explains why the activity cannot be configured.
+     *
+     * @param string $message The reason shown to the teacher.
+     */
+    private function add_blocked_form($message) {
+        $mform = $this->_form;
+
+        $mform->addElement('static', 'noconfig', '',
+            html_writer::div($message, 'alert alert-danger'));
+
+        $mform->addElement('hidden', 'name', '');
+        $mform->setType('name', PARAM_TEXT);
+
+        $this->standard_coursemodule_elements();
+        $this->add_action_buttons(true, false);
+    }
+
+    /**
+     * Store the title of the selected template alongside its id.
+     *
+     * @param array $data
+     * @param array $files
+     * @return array Validation errors.
+     */
+    public function validation($data, $files) {
+        $errors = parent::validation($data, $files);
+
+        if (isset($data['passgrade']) && ($data['passgrade'] < 0 || $data['passgrade'] > 100)) {
+            $errors['passgrade'] = get_string('error_passgrade_range', 'blerify');
+        }
+
+        return $errors;
     }
 }

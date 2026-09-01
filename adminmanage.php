@@ -45,12 +45,11 @@ if ($action === 'save' && data_submitted() && confirm_sesskey()) {
     $data = new stdClass();
     $data->name = required_param('configname', PARAM_TEXT);
     $data->projectid = required_param('projectid', PARAM_TEXT);
-    $data->templateid = required_param('templateid', PARAM_TEXT);
     $data->courseid = required_param('courseid', PARAM_INT);
     $data->timemodified = time();
 
     $uuidpattern = '/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/';
-    if (!preg_match($uuidpattern, $data->projectid) || !preg_match($uuidpattern, $data->templateid)) {
+    if (!preg_match($uuidpattern, $data->projectid)) {
         redirect(new moodle_url('/mod/blerify/adminmanage.php'),
             get_string('error_invalid_uuid', 'blerify'), null, \core\output\notification::NOTIFY_ERROR);
     }
@@ -127,18 +126,6 @@ echo html_writer::end_div();
 echo html_writer::end_div();
 
 echo html_writer::start_div('form-group row mb-2');
-echo html_writer::tag('label', get_string('templateid', 'blerify'), ['class' => 'col-sm-3 col-form-label', 'for' => 'templateid']);
-echo html_writer::start_div('col-sm-9');
-echo html_writer::empty_tag('input', [
-    'type' => 'text', 'name' => 'templateid', 'id' => 'templateid',
-    'class' => 'form-control', 'required' => 'required',
-    'value' => $editrecord ? $editrecord->templateid : '',
-    'placeholder' => get_string('templateid_placeholder', 'blerify'),
-]);
-echo html_writer::end_div();
-echo html_writer::end_div();
-
-echo html_writer::start_div('form-group row mb-2');
 echo html_writer::tag('label', get_string('course'), ['class' => 'col-sm-3 col-form-label', 'for' => 'courseid']);
 echo html_writer::start_div('col-sm-9');
 $courseoptions = ['' => get_string('choosedots')];
@@ -176,7 +163,6 @@ if (empty($configs)) {
     $table->head = [
         get_string('config_name', 'blerify'),
         get_string('projectid', 'blerify'),
-        get_string('templateid', 'blerify'),
         get_string('course'),
         get_string('actions'),
     ];
@@ -200,7 +186,6 @@ if (empty($configs)) {
         $table->data[] = [
             format_string($config->name),
             html_writer::tag('code', $config->projectid),
-            html_writer::tag('code', $config->templateid),
             $coursename,
             $actions,
         ];

@@ -31,4 +31,9 @@ $definitions = [
         'simpledata' => true,
         'ttl' => 60,
     ],
+
+    'accesstokens' => [
+        'mode' => cache_store::MODE_APPLICATION,
+        'simplekeys' => true,
+    ],
 ];

@@ -22,9 +22,10 @@
     Context variables required for this template:
     * activityname - The name of the activity
     * projectid - Blerify project ID
-    * templateid - Blerify template ID
+    * templatename - Title of the Blerify template being issued
+    * passgrade - Minimum course grade percentage required
     * hascredentials - Whether any credentials have been issued
-    * credentials - Array of credential records with fullname, email, status, credentialid, date
+    * credentials - Array of credential records with fullname, email, status, credentialid, date, pdf_url
     * cmid - Course module ID
     * sesskey - Session key for form security
     * hasavailableusers - Whether there are users available for manual issuance
@@ -36,7 +37,8 @@
     <div class="mb-3">
         <small class="text-muted">
             <strong>Project ID:</strong> {{ projectid }} |
-            <strong>Template ID:</strong> {{ templateid }}
+            <strong>{{#str}}templatetoissue, blerify{{/str}}:</strong> {{ templatename }} |
+            <strong>{{#str}}passgrade, blerify{{/str}}:</strong> {{ passgrade }}%
         </small>
     </div>
 
@@ -61,6 +63,12 @@
                         <td>
                             {{#is_error}}
                                 <span class="badge badge-danger bg-danger">{{ status }}</span>
+                                {{#errordetail}}
+                                    <details class="small mt-1">
+                                        <summary>{{#str}}error_detail, blerify{{/str}}</summary>
+                                        <code class="d-block text-danger mt-1">{{ errordetail }}</code>
+                                    </details>
+                                {{/errordetail}}
                             {{/is_error}}
                             {{^is_error}}
                                 {{ status }}
@@ -69,6 +77,12 @@
                         <td><code>{{ credentialid }}</code></td>
                         <td>{{ date }}</td>
                         <td>
+                            {{#is_ready}}
+                                <a href="{{ pdf_url }}" target="_blank" rel="noopener"
+                                   class="btn btn-sm btn-outline-secondary mr-1">
+                                    {{#str}}pdf_open, blerify{{/str}}
+                                </a>
+                            {{/is_ready}}
                             {{#is_error}}
                                 <form method="post" action="view.php?id={{ cmid }}" style="display:inline;">
                                     <input type="hidden" name="action" value="retry">

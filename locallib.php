@@ -25,129 +25,131 @@
 defined('MOODLE_INTERNAL') || die();
 
 use mod_blerify\local\credentials;
-use mod_blerify\wallet\ticket_manager;
 
 /**
- * Build the HTML body for the OTP verification email.
+ * The Blerify project a course issues under.
  *
- * @param string $otp The one-time verification code.
- * @return string The full HTML email body.
+ * Resolved in order of precedence: a per-course override, the project declared
+ * inside the service account file, then the site-wide setting. The API needs a
+ * project in every path, but it is the same one for the whole organization in
+ * the normal case, so it is configured once next to the service account.
+ *
+ * @param int $courseid Course to resolve for, 0 to skip the per-course override.
+ * @return string The project UUID, or '' when none is configured.
  */
-function blerify_get_otp_email_html($otp) {
+function blerify_get_project_id($courseid = 0) {
+    global $DB;
+
+    if ($courseid) {
+        $override = $DB->get_field('blerify_configs', 'projectid', ['courseid' => $courseid]);
+        if (!empty($override)) {
+            return $override;
+        }
+    }
+
+    $sa = \mod_blerify\local\service_account::get_decoded();
+    if (!empty($sa['project_id'])) {
+        return $sa['project_id'];
+    }
+
+    return trim((string) get_config('mod_blerify', 'project_id'));
+}
+
+/**
+ * The credential templates available in a project.
+ *
+ * @param string $projectid
+ * @return array As returned by apirest::get_templates().
+ * @throws \Exception When the list cannot be retrieved.
+ */
+function blerify_get_templates($projectid) {
+    return (new \mod_blerify\apirest\apirest(new \mod_blerify\client\client()))
+        ->get_templates($projectid);
+}
+
+/**
+ * The learner's course grade as a percentage of the maximum.
+ *
+ * @param int $courseid
+ * @param int $userid
+ * @return float|null The percentage, or null when the learner has no course grade yet.
+ */
+function blerify_get_course_grade_percentage($courseid, $userid) {
     global $CFG;
+    require_once($CFG->libdir . '/gradelib.php');
 
-    $headerimg = $CFG->wwwroot . '/mod/blerify/pix/email_header.png';
-    $logoimg = $CFG->wwwroot . '/mod/blerify/pix/blerify.png';
+    $courseitem = grade_item::fetch_course_item($courseid);
+    if (!$courseitem) {
+        return null;
+    }
 
-    return '<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Blerify - Verification Code</title>
-</head>
-<body style="margin:0;padding:0;background-color:#f5f7fa;font-family:\'Open Sans\',Arial,sans-serif;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
- style="background-color:#f5f7fa;">
-<tr>
-<td align="center" style="padding:20px 10px;">
+    $grade = $courseitem->get_grade($userid, false);
+    if (!$grade || $grade->finalgrade === null || $grade->finalgrade === false) {
+        return null;
+    }
 
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
- style="max-width:600px;">
+    $grademax = (float)$courseitem->grademax;
+    $grademin = (float)$courseitem->grademin;
+    $range = $grademax - $grademin;
 
-<!-- Header banner -->
-<tr>
-<td align="center" style="padding:0;">
-<img src="' . $headerimg . '" alt="Blerify"
- style="display:block;width:100%;max-width:600px;height:auto;border-radius:25px 25px 0 0;" />
-</td>
-</tr>
+    if ($range <= 0) {
+        return null;
+    }
 
-<!-- Main card -->
-<tr>
-<td style="background-color:#ffffff;padding:0 30px;">
+    return (((float)$grade->finalgrade - $grademin) / $range) * 100;
+}
 
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
- style="border:1px solid #e5e5e5;border-radius:25px;overflow:hidden;">
+/**
+ * Queue issuance in a course for every activity whose grade threshold the
+ * learner now meets.
+ *
+ * The API calls happen in an ad-hoc task, so a bulk regrade queues work instead
+ * of holding the grader while Blerify responds.
+ *
+ * @param int $courseid
+ * @param int $userid
+ */
+function blerify_issue_for_qualified_user($courseid, $userid) {
+    global $DB;
 
-<!-- Title -->
-<tr>
-<td style="padding:35px 30px 10px;text-align:left;">
-<p style="margin:0;font-size:19px;font-weight:700;line-height:1.4;color:#000000;">
-' . get_string('otp_email_html_title', 'blerify') . '
-</p>
-</td>
-</tr>
+    $records = $DB->get_records('blerify', ['course' => $courseid]);
+    if (!$records) {
+        return;
+    }
 
-<!-- Body text -->
-<tr>
-<td style="padding:10px 30px 5px;text-align:left;">
-<p style="margin:0;font-size:17px;line-height:1.4;color:#000000;">
-' . get_string('otp_email_html_greeting', 'blerify') . '
-</p>
-</td>
-</tr>
+    $user = $DB->get_record('user', ['id' => $userid], 'id, deleted');
+    if (!$user || !empty($user->deleted)) {
+        return;
+    }
 
-<!-- OTP code box -->
-<tr>
-<td style="padding:25px 30px;" align="center">
-<table role="presentation" cellpadding="0" cellspacing="0" border="0">
-<tr>
-<td style="background-color:#31c665;border-radius:16px;padding:18px 50px;text-align:center;">
-<span style="font-size:32px;font-weight:700;letter-spacing:8px;color:#ffffff;font-family:\'Courier New\',monospace;">
-' . s($otp) . '
-</span>
-</td>
-</tr>
-</table>
-</td>
-</tr>
+    $manager = new credentials();
+    $percentage = null;
 
-<!-- Expiry notice -->
-<tr>
-<td style="padding:0 30px 30px;text-align:center;">
-<p style="margin:0;font-size:15px;line-height:1.4;color:#606789;">
-' . get_string('otp_email_html_expiry', 'blerify') . '
-</p>
-</td>
-</tr>
+    foreach ($records as $record) {
+        if (empty($record->completionissue) || empty($record->templateid)) {
+            continue;
+        }
 
-<!-- Welcome message -->
-<tr>
-<td style="padding:10px 30px 30px;text-align:center;">
-<p style="margin:0;font-size:17px;line-height:1.4;color:#000000;">
-' . get_string('otp_email_html_welcome', 'blerify') . '
-</p>
-</td>
-</tr>
+        // A record already exists for every state worth keeping, including a
+        // failed one: retrying a failure is a deliberate teacher action, so a
+        // failing API is not retried on every grade change.
+        if ($manager->get_credential_for_user($record->id, $userid)) {
+            continue;
+        }
 
-<!-- Footer inside card -->
-<tr>
-<td style="background-color:#f5f7fa;border-radius:0 0 25px 25px;padding:25px 30px;text-align:center;">
-<p style="margin:0;font-size:14px;line-height:1.4;color:#606789;">
-' . get_string('otp_email_html_footer', 'blerify') . '
-</p>
-</td>
-</tr>
+        if ($percentage === null) {
+            $percentage = blerify_get_course_grade_percentage($courseid, $userid);
+            if ($percentage === null) {
+                return;
+            }
+        }
 
-</table>
-</td>
-</tr>
+        if ($percentage < (float)$record->passgrade) {
+            continue;
+        }
 
-<!-- Blerify.com link -->
-<tr>
-<td style="padding:20px 0;text-align:center;">
-<a href="https://blerify.com/" style="text-decoration:none;color:#2e95d3;font-size:17px;">Blerify.com</a>
-</td>
-</tr>
-
-</table>
-
-</td>
-</tr>
-</table>
-</body>
-</html>';
+        \mod_blerify\task\issue_credential::queue($record->id, $userid);
+    }
 }
 
 /**
@@ -156,66 +158,5 @@ function blerify_get_otp_email_html($otp) {
  * @param \core\event\course_completed $event
  */
 function blerify_course_completed_handler($event) {
-    global $DB;
-
-    $user = $DB->get_record('user', ['id' => $event->relateduserid]);
-    if (!$user) {
-        return;
-    }
-
-    $records = $DB->get_records('blerify', ['course' => $event->courseid]);
-    if (!$records) {
-        return;
-    }
-
-    $credentialsmanager = new credentials();
-    $ticketmanager = new ticket_manager();
-    $walletdid = $ticketmanager->get_did($user->id);
-
-    foreach ($records as $record) {
-        if (empty($record->completionissue)) {
-            continue;
-        }
-
-        $existing = $DB->get_record('blerify_credentials', [
-            'blerifyid' => $record->id,
-            'userid' => $user->id,
-        ]);
-        if ($existing) {
-            continue;
-        }
-
-        $config = $DB->get_record('blerify_configs', ['id' => $record->configid]);
-        if (!$config) {
-            debugging('Blerify: No config found for activity ' . $record->id, DEBUG_NORMAL);
-            continue;
-        }
-
-        if (!empty($walletdid)) {
-            try {
-                $credresult = $credentialsmanager->issue_credential($record, $config, $user, $walletdid);
-
-                $cm = get_coursemodule_from_instance('blerify', $record->id, $record->course);
-                if ($cm) {
-                    $certificateevent = \mod_blerify\event\certificate_created::create([
-                        'objectid' => $credresult->id,
-                        'context' => context_module::instance($cm->id),
-                        'relateduserid' => $user->id,
-                    ]);
-                    $certificateevent->trigger();
-                }
-            } catch (\Exception $e) {
-                debugging('Blerify: failed to issue credential for user ' . $user->id .
-                    ' in activity ' . $record->id, DEBUG_NORMAL);
-                debugging($e->getMessage(), DEBUG_DEVELOPER);
-            }
-        } else {
-            $subject = get_string('completion_notification_subject', 'blerify');
-            $body = get_string('completion_notification_body', 'blerify');
-            $sent = email_to_user($user, \core_user::get_noreply_user(), $subject, $body);
-            if (!$sent) {
-                debugging('Blerify: completion notification email failed for user ' . $user->id, DEBUG_NORMAL);
-            }
-        }
-    }
+    blerify_issue_for_qualified_user($event->courseid, $event->relateduserid);
 }

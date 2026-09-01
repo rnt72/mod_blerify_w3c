@@ -40,7 +40,11 @@ class service_account {
     public static function store(string $json): bool {
         self::ensure_key();
         $encrypted = \core\encryption::encrypt($json);
-        return set_config(self::CONFIG_NAME, base64_encode($encrypted), 'mod_blerify');
+        $stored = set_config(self::CONFIG_NAME, base64_encode($encrypted), 'mod_blerify');
+        if ($stored) {
+            \cache::make('mod_blerify', 'accesstokens')->purge();
+        }
+        return $stored;
     }
 
     /**

@@ -137,5 +137,89 @@ function xmldb_blerify_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026071400, 'blerify');
     }
 
+    if ($oldversion < 2026082400) {
+
+        // The template is now chosen per activity instead of per course configuration.
+        $table = new xmldb_table('blerify');
+        $fields = [
+            new xmldb_field('templateid', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, '', 'configid'),
+            new xmldb_field('templatename', XMLDB_TYPE_CHAR, '255', null, null, null, null, 'templateid'),
+            new xmldb_field('passgrade', XMLDB_TYPE_INTEGER, '3', null, XMLDB_NOTNULL, null, '70', 'completionissue'),
+        ];
+        foreach ($fields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+
+        // Carry the template each activity was already using over from its configuration.
+        $configs = new xmldb_table('blerify_configs');
+        $legacytemplate = new xmldb_field('templateid');
+        if ($dbman->field_exists($configs, $legacytemplate)) {
+            $DB->execute("UPDATE {blerify} b
+                             SET templateid = COALESCE(
+                                     (SELECT c.templateid FROM {blerify_configs} c WHERE c.id = b.configid), '')
+                           WHERE b.templateid = ''");
+            $dbman->drop_field($configs, $legacytemplate);
+        }
+
+        // Issuance is now asynchronous: the local record tracks the API status and
+        // the claim code instead of the intermediate signing material.
+        $table = new xmldb_table('blerify_credentials');
+        $newfields = [
+            new xmldb_field('remotestatus', XMLDB_TYPE_CHAR, '32', null, null, null, null, 'status'),
+            new xmldb_field('code', XMLDB_TYPE_CHAR, '255', null, null, null, null, 'remotestatus'),
+            new xmldb_field('timeissued', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'errordetail'),
+            new xmldb_field('timeclaimed', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'timeissued'),
+        ];
+        foreach ($newfields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+
+        // Credentials already delivered keep their state under the new vocabulary.
+        $DB->set_field('blerify_credentials', 'status', 'issued', ['status' => 'assembled']);
+        $DB->set_field('blerify_credentials', 'status', 'pending', ['status' => 'authorized']);
+        $DB->execute("UPDATE {blerify_credentials} SET timeissued = timemodified
+                       WHERE status = 'issued' AND timeissued = 0");
+
+        foreach (['wallet_did', 'deeplinkcode', 'deeplinkurl', 'laststep',
+                  'signingmessage', 'signature', 'publickey'] as $obsolete) {
+            $field = new xmldb_field($obsolete);
+            if ($dbman->field_exists($table, $field)) {
+                $dbman->drop_field($table, $field);
+            }
+        }
+
+        // The OTP + wallet DID claiming flow is replaced by the claim code.
+        foreach (['blerify_wallet_tickets', 'blerify_wallet_lockouts', 'blerify_wallet_dids'] as $obsolete) {
+            $table = new xmldb_table($obsolete);
+            if ($dbman->table_exists($table)) {
+                $dbman->drop_table($table);
+            }
+        }
+
+        upgrade_mod_savepoint(true, 2026082400, 'blerify');
+    }
+
+    if ($oldversion < 2026090100) {
+
+        // The project is configured once for the site, so an activity no longer
+        // needs a per-course configuration row.
+        $table = new xmldb_table('blerify');
+        $field = new xmldb_field('configid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'course');
+        if ($dbman->field_exists($table, $field)) {
+            $dbman->change_field_default($table, $field);
+        }
+
+        upgrade_mod_savepoint(true, 2026090100, 'blerify');
+    }
+
+    if ($oldversion < 2026090102) {
+        unset_config('organization_name', 'mod_blerify');
+        upgrade_mod_savepoint(true, 2026090102, 'blerify');
+    }
+
     return true;
 }

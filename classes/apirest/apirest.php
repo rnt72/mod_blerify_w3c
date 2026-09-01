@@ -16,7 +16,7 @@
 
 /**
  * Blerify W3C credential API rest client.
- * Implements the 3-step W3C flow: Create -> Sign -> Assemble
+ * Implements the service-account flow: Create -> Approve -> Poll.
  *
  * @package    mod_blerify
  * @copyright  Blerify <dev@blerify.com>
@@ -48,170 +48,155 @@ class apirest {
     }
 
     /**
-     * Issue a W3C credential through the 3-step flow.
+     * Base path for every organization + project scoped call.
+     *
+     * @param string $projectid
+     * @return string
+     */
+    private function project_path($projectid) {
+        return '/api/v1/organizations/' . rawurlencode($this->organizationid) .
+               '/projects/' . rawurlencode($projectid);
+    }
+
+    /**
+     * List the credential templates available in a project.
+     *
+     * @param string $projectid Blerify project UUID.
+     * @return array List of ['id' => string, 'title' => string, 'description' => string, 'image' => string].
+     * @throws \Exception On API error.
+     */
+    public function get_templates($projectid) {
+        $response = $this->client->get($this->project_path($projectid) . '/templates/summary');
+
+        if (!$response || !isset($response->templates) || !is_array($response->templates)) {
+            return [];
+        }
+
+        $templates = [];
+        foreach ($response->templates as $template) {
+            if (empty($template->id)) {
+                continue;
+            }
+            $templates[] = [
+                'id' => $template->id,
+                'title' => isset($template->title) ? $template->title : $template->id,
+                'description' => isset($template->description) ? $template->description : '',
+                'image' => (isset($template->image) && $template->image !== 'NO_IMAGE') ? $template->image : '',
+            ];
+        }
+
+        return $templates;
+    }
+
+    /**
+     * Step 1: Create a W3C credential for a receiver identified by email.
+     *
+     * The receiver does not need a wallet DID: Blerify creates/updates the
+     * organization user from the email and the credential is claimed later.
      *
      * @param object $user Moodle user object.
      * @param string $templateid Blerify template UUID.
      * @param string $projectid Blerify project UUID.
-     * @param string|null $walletdid Optional wallet DID.
-     * @param array|null $resume Progress from a prior attempt.
-     * @return array ['credential_id' => string, 'status' => string, 'code' => string|null]
+     * @param array $w3cdata Extra fields rendered into the credential.
+     * @return string The created credential id.
      * @throws \Exception On API error.
      */
-    public function issue_credential($user, $templateid, $projectid, $walletdid = null, $resume = null) {
-        $credentialid = isset($resume['credentialid']) ? $resume['credentialid'] : null;
-        $laststep = isset($resume['laststep']) ? $resume['laststep'] : null;
-        $signingmessage = isset($resume['signingmessage']) ? $resume['signingmessage'] : null;
-        $signature = isset($resume['signature']) ? $resume['signature'] : null;
-        $publickey = isset($resume['publickey']) ? $resume['publickey'] : null;
-        $code = null;
-
-        if (empty($credentialid)) {
-            $createresponse = $this->create_credential($user, $templateid, $projectid, $walletdid);
-
-            $credential = isset($createresponse->credential) ? $createresponse->credential : $createresponse;
-            if (!isset($createresponse->signingMessage) || !isset($credential->_id)) {
-                throw new \Exception('Failed to create credential: malformed response');
-            }
-            $signingmessage = $createresponse->signingMessage;
-            $credentialid = $credential->_id;
-            $code = isset($credential->code) ? $credential->code : null;
-            $laststep = 'created';
-        }
-
-        if ($laststep !== 'signed' || empty($signature) || empty($publickey)) {
-            if (empty($signingmessage)) {
-                throw new issuance_exception(
-                    'Cannot resume issuance: missing signing message', $credentialid, 'created');
-            }
-            try {
-                $signresult = $this->sign_credential($projectid, $credentialid, $signingmessage);
-            } catch (\Exception $e) {
-                throw new issuance_exception(
-                    $e->getMessage(), $credentialid, 'created', $e, $signingmessage);
-            }
-            $signature = $signresult->signature;
-            $publickey = $signresult->publicKey;
-            $laststep = 'signed';
-        }
-
-        try {
-            $assembleresponse = $this->assemble_credential($projectid, $credentialid, $templateid,
-                $signature, $publickey);
-        } catch (\Exception $e) {
-            throw new issuance_exception(
-                $e->getMessage(), $credentialid, 'signed', $e, $signingmessage, $signature, $publickey);
-        }
-
-        return [
-            'credential_id' => $credentialid,
-            'status' => 'assembled',
-            'code' => $code,
-            'assemble_raw' => $assembleresponse,
-        ];
-    }
-
-    /**
-     * Step 1: Create a W3C credential.
-     *
-     * @param object $user
-     * @param string $templateid
-     * @param string $projectid
-     * @param string|null $walletdid
-     * @return object API response.
-     * @throws \Exception
-     */
-    private function create_credential($user, $templateid, $projectid, $walletdid = null) {
-        $path = '/api/v1/organizations/' . rawurlencode($this->organizationid) .
-                '/projects/' . rawurlencode($projectid) . '/credentials';
-
-        if (empty($walletdid)) {
-            throw new \Exception('Cannot issue credential: student has not linked a wallet DID.');
-        }
-        $did = $walletdid;
-
-        $organizationuser = [
-            'email' => $user->email,
-            'did' => $did,
-        ];
-
+    public function create_credential($user, $templateid, $projectid, array $w3cdata = []) {
         $body = [
-            'projectId' => $projectid,
             'templateId' => $templateid,
             'additionalData' => [
-                'w3cData' => [
+                'w3cData' => $w3cdata + [
                     'email' => $user->email,
-                    'fullname' => $user->firstname,
+                    'fullname' => fullname($user),
+                    'name' => $user->firstname,
                     'lastname' => $user->lastname,
                 ],
             ],
-            'organizationUser' => $organizationuser,
+            'organizationUser' => [
+                'email' => $user->email,
+            ],
             'options' => [
-                'approvers' => false,
+                'omitApproval' => false,
+                'approvers' => true,
             ],
         ];
 
-        $response = $this->client->post($path, $body);
+        $response = $this->client->post($this->project_path($projectid) . '/credentials', $body);
         if (!$response) {
             throw new \Exception('Failed to create credential: empty response');
         }
 
-        return $response;
-    }
-
-    /**
-     * Step 2: Sign a credential.
-     *
-     * @param string $projectid
-     * @param string $credentialid
-     * @param string $signingmessage
-     * @return object Response with signature and publicKey.
-     * @throws \Exception
-     */
-    private function sign_credential($projectid, $credentialid, $signingmessage) {
-        $path = '/api/v1/organizations/' . rawurlencode($this->organizationid) .
-                '/projects/' . rawurlencode($projectid) .
-                '/credentials/' . rawurlencode($credentialid) . '/sign/custody';
-
-        $body = [
-            'signingMessage' => $signingmessage,
-        ];
-
-        $response = $this->client->put($path, $body);
-        if (!$response || !isset($response->signature) || !isset($response->publicKey)) {
-            throw new \Exception('Failed to sign credential: invalid response');
+        // The API has returned both a bare credential and a {credential: {...}} envelope.
+        $credential = isset($response->credential) ? $response->credential : $response;
+        if (empty($credential->_id)) {
+            throw new \Exception('Failed to create credential: malformed response');
         }
 
-        return $response;
+        return $credential->_id;
     }
 
     /**
-     * Step 3: Assemble a credential.
+     * Step 2: Approve the credential as the service account, which triggers issuance.
+     *
+     * Issuance runs asynchronously: a successful call only means the approval was
+     * recorded, so the result must be read with poll_credential().
+     *
+     * The integration guide documents this on /sign while the API collection
+     * documents the same body and response on /approve, so /approve is tried
+     * first and /sign is used as a fallback.
      *
      * @param string $projectid
      * @param string $credentialid
      * @param string $templateid
-     * @param string $signature
-     * @param string $publickey
-     * @return object Assembled W3C VerifiableCredential.
-     * @throws \Exception
+     * @param string $lang Receiver language, e.g. 'en' or 'es'.
+     * @return void
+     * @throws \Exception On API error.
      */
-    private function assemble_credential($projectid, $credentialid, $templateid, $signature, $publickey) {
-        $path = '/api/v1/organizations/' . rawurlencode($this->organizationid) .
-                '/projects/' . rawurlencode($projectid) .
-                '/credentials/' . rawurlencode($credentialid) . '/assemble?keystore=keyvault';
+    public function approve_credential($projectid, $credentialid, $templateid, $lang = 'es') {
+        $base = $this->project_path($projectid) . '/credentials/' . rawurlencode($credentialid);
+        $query = '?keystore=keyvault&lang=' . rawurlencode($lang);
+        $body = ['templateId' => $templateid];
 
-        $body = [
-            'templateId' => $templateid,
-            'signature' => $signature,
-            'publicKey' => $publickey,
-        ];
-
-        $response = $this->client->put_raw($path, $body);
-        if (!$response) {
-            throw new \Exception('Failed to assemble credential: invalid response');
+        try {
+            $this->client->put($base . '/approve' . $query, $body);
+            return;
+        } catch (\Exception $e) {
+            debugging('Blerify: /approve failed, retrying on /sign: ' . $e->getMessage(), DEBUG_DEVELOPER);
         }
 
-        return $response;
+        $this->client->put($base . '/sign' . $query, $body);
+    }
+
+    /**
+     * Step 3: Read the current state of a credential.
+     *
+     * @param string $projectid
+     * @param string $credentialid
+     * @param string $templateid Required: access is scoped to org + project + template.
+     * @return array {
+     *     status: string   PENDING while issuing, SENT once issued, DELIVERED once claimed.
+     *     code: string|null Claim code, present once SENT. Used to build the wallet QR.
+     *     pdf: string|null  Short-lived signed URL (~60s).
+     *     thumbnail: string|null Short-lived signed URL (~60s).
+     *     issued: string|null The signed verifiable credential, present once claimed.
+     * }
+     * @throws \Exception On API error.
+     */
+    public function poll_credential($projectid, $credentialid, $templateid) {
+        $path = $this->project_path($projectid) . '/credentials/' . rawurlencode($credentialid) .
+                '/polling?templateId=' . rawurlencode($templateid);
+
+        $response = $this->client->get($path);
+        if (!$response) {
+            throw new \Exception('Failed to poll credential: empty response');
+        }
+
+        return [
+            'status' => isset($response->status) ? $response->status : null,
+            'code' => isset($response->code) ? $response->code : null,
+            'pdf' => isset($response->pdf) ? $response->pdf : null,
+            'thumbnail' => isset($response->thumbnail) ? $response->thumbnail : null,
+            'issued' => isset($response->issued) ? $response->issued : null,
+        ];
     }
 }

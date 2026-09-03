@@ -91,7 +91,6 @@ $string['privacy:metadata:blerify_credentials:status'] = 'The current status of 
 $string['error_not_configured'] = 'Blerify plugin is not properly configured. Please contact the administrator.';
 $string['error_api_call'] = 'Error communicating with Blerify API: {$a}';
 
-// Admin config management.
 
 // Manual issuance.
 $string['issue_credentials'] = 'Enable Credentials';
@@ -110,12 +109,7 @@ $string['retry_issue'] = 'Retry';
 $string['retry_success'] = 'Credential re-enabled successfully.';
 $string['retry_failed'] = 'Retry failed. Check the logs for details.';
 
-// Wallet connect.
-$string['wallet_download_prompt'] = 'Don\'t have the wallet yet? Download it here:';
-$string['wallet_download_ios'] = 'Download on App Store';
-$string['wallet_download_android'] = 'Get it on Google Play';
 
-// OTP and claim.
 
 // Course completion notification.
 $string['completion_notification_subject'] = 'Blerify - Your credential is ready to claim';
@@ -143,10 +137,6 @@ $string['certificate_threshold'] = 'You need a course grade of at least';
 $string['certificate_current_grade'] = 'Your current grade:';
 $string['pdf_download'] = 'Download PDF';
 $string['pdf_open'] = 'Open the PDF';
-$string['claim_btn'] = 'Claim my credential';
-$string['claim_scan_prompt'] = 'Scan this code with the Blerify wallet to claim your credential.';
-$string['claim_or_open_link'] = 'Already on your phone?';
-$string['claim_open_wallet'] = 'Open in the wallet';
 
 // Credential statuses.
 $string['status_issuing'] = 'Issuing';
@@ -154,7 +144,6 @@ $string['status_issued'] = 'Issued';
 $string['status_claimed'] = 'Claimed';
 $string['error_detail'] = 'Error details';
 
-// Errors.
 $string['error_no_templates'] = 'The project configured for this course has no credential templates available.';
 $string['error_templates_unavailable'] = 'The credential templates could not be loaded. Check the Blerify service account configuration.';
 $string['error_passgrade_range'] = 'The minimum grade must be between 0 and 100.';

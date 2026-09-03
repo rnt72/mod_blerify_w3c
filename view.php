@@ -28,7 +28,6 @@ require_once($CFG->dirroot . '/mod/blerify/lib.php');
 require_once($CFG->dirroot . '/mod/blerify/locallib.php');
 
 use mod_blerify\local\credentials;
-use mod_blerify\wallet\qr_generator;
 
 $id = required_param('id', PARAM_INT);
 
@@ -210,22 +209,6 @@ if (has_capability('mod/blerify:manage', $context)) {
             ['id' => $cm->id]))->out(false);
         $templatedata['download_url'] = (new moodle_url('/mod/blerify/pdf.php',
             ['id' => $cm->id, 'download' => 1]))->out(false);
-
-        // Claiming registers the credential in the holder's wallet; until then it
-        // is issued but unclaimed, which is what the QR below resolves.
-        $templatedata['show_claim'] = !$templatedata['is_claimed'] && !empty($credential->code);
-        $templatedata['claim_requested'] = optional_param('claim', 0, PARAM_BOOL);
-
-        if ($templatedata['show_claim'] && $templatedata['claim_requested']) {
-            $deeplink = $manager->build_claim_deeplink($credential->code);
-            if ($deeplink !== '') {
-                $templatedata['deeplink_url'] = $deeplink;
-                $templatedata['qr_data_url'] = 'data:image/png;base64,' . qr_generator::generate($deeplink);
-            }
-        }
-
-        $templatedata['claim_url'] = (new moodle_url('/mod/blerify/view.php',
-            ['id' => $cm->id, 'claim' => 1]))->out(false);
     }
 
     if ($templatedata['is_processing'] || ($templatedata['is_ready'] && !$templatedata['is_claimed'])) {
@@ -237,11 +220,6 @@ if (has_capability('mod/blerify:manage', $context)) {
             'status' => $status,
         ]]);
     }
-
-    $templatedata['appstore_url'] = 'https://apps.apple.com/app/blerify/id6740080426';
-    $templatedata['playstore_url'] = 'https://play.google.com/store/apps/details?id=com.nicoinc.lacchainid';
-    $templatedata['appstore_img'] = (new moodle_url('/mod/blerify/pix/appstore.jpg'))->out(false);
-    $templatedata['playstore_img'] = (new moodle_url('/mod/blerify/pix/googleplay.jpg'))->out(false);
 
     echo $OUTPUT->header();
     echo $OUTPUT->render_from_template('mod_blerify/view_student', $templatedata);

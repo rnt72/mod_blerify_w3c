@@ -36,7 +36,8 @@ class backup_blerify_activity_structure_step extends backup_activity_structure_s
 
         $credentials = new backup_nested_element('credentials');
         $credential = new backup_nested_element('credential', ['id'], [
-            'blerifyid', 'userid', 'credentialid', 'status', 'remotestatus',
+            'blerifyid', 'userid', 'credentialid', 'projectid', 'templateid',
+            'status', 'remotestatus',
             'code', 'errordetail', 'timeissued', 'timeclaimed',
             'timecreated', 'timemodified',
         ]);

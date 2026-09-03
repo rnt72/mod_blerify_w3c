@@ -24,9 +24,9 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version   = 2026090302;
+$plugin->version   = 2026090306;
 $plugin->requires  = 2022041900;
 $plugin->cron      = 0;
 $plugin->component = 'mod_blerify';
 $plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = 'v0.9.2';
+$plugin->release   = 'v0.9.6';

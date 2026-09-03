@@ -82,7 +82,6 @@ $string['privacy:metadata:blerify_credentials:status'] = 'El estado actual de la
 $string['error_not_configured'] = 'El plugin Blerify no está configurado correctamente. Por favor, contacta al administrador.';
 $string['error_api_call'] = 'Error al comunicarse con la API de Blerify: {$a}';
 
-// Admin config management.
 
 // Manual issuance.
 $string['issue_credentials'] = 'Habilitar Credenciales';
@@ -101,12 +100,7 @@ $string['retry_issue'] = 'Reintentar';
 $string['retry_success'] = 'Credencial rehabilitada exitosamente.';
 $string['retry_failed'] = 'Reintento fallido. Revisa los registros para más detalles.';
 
-// Wallet connect.
-$string['wallet_download_prompt'] = '¿Aún no tienes la wallet? Descárgala aquí:';
-$string['wallet_download_ios'] = 'Descargar en App Store';
-$string['wallet_download_android'] = 'Obtener en Google Play';
 
-// OTP and claim.
 
 // Course completion notification.
 $string['completion_notification_subject'] = 'Blerify - Tu credencial está lista para reclamar';
@@ -134,10 +128,6 @@ $string['certificate_threshold'] = 'Necesitas una nota del curso de al menos';
 $string['certificate_current_grade'] = 'Tu nota actual:';
 $string['pdf_download'] = 'Descargar PDF';
 $string['pdf_open'] = 'Abrir el PDF';
-$string['claim_btn'] = 'Reclamar mi credencial';
-$string['claim_scan_prompt'] = 'Escanea este codigo con la billetera Blerify para reclamar tu credencial.';
-$string['claim_or_open_link'] = 'Ya estas en tu celular?';
-$string['claim_open_wallet'] = 'Abrir en la billetera';
 
 // Estados de la credencial.
 $string['status_issuing'] = 'Emitiendo';

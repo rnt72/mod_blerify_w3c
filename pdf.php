@@ -54,19 +54,40 @@ if (!in_array($asset, ['pdf', 'thumbnail'], true)) {
     throw new moodle_exception('invalidparameter', 'error');
 }
 
+/**
+ * Fail as a resource rather than as a page: the browser requests this from an
+ * <img> or a link, where a Moodle error page would arrive as a broken image
+ * with no way to see what went wrong.
+ *
+ * @param string $reason Logged, never shown to the learner.
+ */
+function blerify_asset_failure($reason) {
+    debugging('Blerify asset unavailable: ' . $reason, DEBUG_DEVELOPER);
+    header('HTTP/1.1 404 Not Found');
+    header('Content-Type: text/plain; charset=utf-8');
+    header('X-Content-Type-Options: nosniff');
+    echo get_string('error_credential_not_ready', 'blerify');
+    exit;
+}
+
 $manager = new credentials();
 $credential = $manager->get_credential_for_user($cm->instance, $userid);
 
 if (!$credential || !in_array($credential->status,
         [credentials::STATUS_ISSUED, credentials::STATUS_CLAIMED], true)) {
-    throw new moodle_exception('error_credential_not_ready', 'blerify');
+    blerify_asset_failure('credential not in a readable state');
 }
 
-$urls = $manager->get_asset_urls($credential);
+try {
+    $urls = $manager->get_asset_urls($credential);
+} catch (\Exception $e) {
+    blerify_asset_failure($e->getMessage());
+}
+
 $url = $urls[$asset];
 
 if (empty($url) || strpos($url, 'https://') !== 0) {
-    throw new moodle_exception('error_credential_not_ready', 'blerify');
+    blerify_asset_failure('no signed URL for ' . $asset);
 }
 
 $curl = new \curl();
@@ -80,7 +101,8 @@ $curl->setopt([
 $content = $curl->get($url);
 
 if ($curl->error || ($curl->get_info()['http_code'] ?? 0) !== 200 || $content === '') {
-    throw new moodle_exception('error_credential_not_ready', 'blerify');
+    blerify_asset_failure('fetch failed: ' . ($curl->error ?: 'HTTP ' .
+        ($curl->get_info()['http_code'] ?? 0)));
 }
 
 $ispdf = ($asset === 'pdf');

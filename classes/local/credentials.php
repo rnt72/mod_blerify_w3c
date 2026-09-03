@@ -76,6 +76,9 @@ class credentials {
                         $user, $blerifyrecord->templateid, $projectid);
                 }
 
+                $credrecord->projectid = $projectid;
+                $credrecord->templateid = $blerifyrecord->templateid;
+
                 $api->approve_credential(
                     $projectid,
                     $credrecord->credentialid,
@@ -120,11 +123,22 @@ class credentials {
             return $credrecord;
         }
 
-        $blerifyrecord = $DB->get_record('blerify', ['id' => $credrecord->blerifyid], '*', MUST_EXIST);
-
         $api = new apirest(new client());
-        $result = $api->poll_credential(
-            $this->get_project_id($blerifyrecord), $credrecord->credentialid, $blerifyrecord->templateid);
+
+        try {
+            $result = $api->poll_credential(
+                $this->get_scope($credrecord, 'projectid'),
+                $credrecord->credentialid,
+                $this->get_scope($credrecord, 'templateid'));
+        } catch (\Exception $e) {
+            if (strpos($e->getMessage(), 'HTTP 404') !== false) {
+                $credrecord->status = self::STATUS_ERROR;
+                $credrecord->errordetail = 'credential_not_found';
+                $credrecord->timemodified = time();
+                $DB->update_record('blerify_credentials', $credrecord);
+            }
+            throw $e;
+        }
 
         return $this->apply_poll_result($credrecord, $result);
     }
@@ -198,11 +212,11 @@ class credentials {
             return ['pdf' => null, 'thumbnail' => null];
         }
 
-        $blerifyrecord = $DB->get_record('blerify', ['id' => $credrecord->blerifyid], '*', MUST_EXIST);
-
         $api = new apirest(new client());
         $result = $api->poll_credential(
-            $this->get_project_id($blerifyrecord), $credrecord->credentialid, $blerifyrecord->templateid);
+            $this->get_scope($credrecord, 'projectid'),
+            $credrecord->credentialid,
+            $this->get_scope($credrecord, 'templateid'));
 
         $this->apply_poll_result($credrecord, $result);
 
@@ -227,6 +241,30 @@ class credentials {
      * @return string
      * @throws \moodle_exception When no project is configured anywhere.
      */
+    /**
+     * The project or template a credential belongs to.
+     *
+     * Records created before these were stored fall back to the activity, which
+     * is right as long as nobody changed it since.
+     *
+     * @param object $credrecord
+     * @param string $field 'projectid' or 'templateid'.
+     * @return string
+     */
+    private function get_scope($credrecord, $field) {
+        global $DB;
+
+        if (!empty($credrecord->{$field})) {
+            return $credrecord->{$field};
+        }
+
+        $blerifyrecord = $DB->get_record('blerify', ['id' => $credrecord->blerifyid], '*', MUST_EXIST);
+
+        return $field === 'projectid'
+            ? $this->get_project_id($blerifyrecord)
+            : $blerifyrecord->templateid;
+    }
+
     private function get_project_id($blerifyrecord) {
         if (empty($blerifyrecord->projectid)) {
             throw new \moodle_exception('error_no_project_id', 'blerify');

@@ -36,28 +36,39 @@ class mod_blerify_mod_form extends moodleform_mod {
      * Define the form elements.
      */
     public function definition() {
-        global $COURSE;
+        global $PAGE;
 
         $mform = $this->_form;
 
-        $projectid = blerify_get_project_id($COURSE->id);
-
         $mform->addElement('header', 'general', get_string('general', 'form'));
 
-        if ($projectid === '') {
-            $this->add_blocked_form(get_string('error_no_project_id', 'blerify'));
-            return;
-        }
-
         try {
-            $templates = blerify_get_templates($projectid);
+            $projects = blerify_get_projects();
+            $bundle = blerify_get_templates_by_project();
         } catch (\Exception $e) {
-            debugging('Blerify: could not list templates: ' . $e->getMessage(), DEBUG_DEVELOPER);
-            $this->add_blocked_form(get_string('error_templates_unavailable', 'blerify'));
+            debugging('Blerify: could not list projects: ' . $e->getMessage(), DEBUG_DEVELOPER);
+            // The reason is shown to whoever is configuring the activity: without
+            // it the only way to tell a permission problem from a network one is
+            // to turn on developer debugging on a production site.
+            $this->add_blocked_form(get_string('error_templates_unavailable', 'blerify'),
+                $e->getMessage());
             return;
         }
 
-        if (empty($templates)) {
+        if (empty($projects)) {
+            $this->add_blocked_form(get_string('error_no_projects', 'blerify'));
+            return;
+        }
+
+        $hastemplates = false;
+        foreach ($bundle as $templates) {
+            if (!empty($templates)) {
+                $hastemplates = true;
+                break;
+            }
+        }
+
+        if (!$hastemplates) {
             $this->add_blocked_form(get_string('error_no_templates', 'blerify'));
             return;
         }
@@ -70,20 +81,36 @@ class mod_blerify_mod_form extends moodleform_mod {
 
         $mform->addElement('header', 'blerifysettings', get_string('blerifysettings', 'blerify'));
 
-        $options = [];
-        foreach ($templates as $template) {
-            $options[$template['id']] = $template['title'];
+        $projectoptions = [];
+        foreach ($projects as $project) {
+            $projectoptions[$project['id']] = $project['name'] . ' (' . $project['id'] . ')';
         }
-        $mform->addElement('select', 'templateid', get_string('templatetoissue', 'blerify'), $options);
+        $mform->addElement('select', 'projectid', get_string('projecttoissue', 'blerify'), $projectoptions);
+        $mform->addRule('projectid', null, 'required', null, 'client');
+        $mform->addHelpButton('projectid', 'projecttoissue', 'blerify');
+
+        // Filled by JavaScript from the selected project; every option is listed
+        // here so the field still validates when JavaScript is unavailable.
+        $templateoptions = [];
+        foreach ($bundle as $templates) {
+            foreach ($templates as $template) {
+                $templateoptions[$template['id']] = $template['title'];
+            }
+        }
+        $mform->addElement('select', 'templateid', get_string('templatetoissue', 'blerify'), $templateoptions);
         $mform->addRule('templateid', null, 'required', null, 'client');
         $mform->addHelpButton('templateid', 'templatetoissue', 'blerify');
 
-        // Keeps the chosen title available for display without calling the API again.
+        $mform->addElement('static', 'templatepreview', get_string('templatepreview', 'blerify'),
+            html_writer::div('', '', ['id' => 'blerify-template-preview']));
+
         $mform->addElement('hidden', 'templatename', '');
         $mform->setType('templatename', PARAM_TEXT);
 
-        $mform->addElement('static', 'projectidinfo', get_string('projectid', 'blerify'),
-            html_writer::tag('code', $projectid));
+        $PAGE->requires->js_call_amd('mod_blerify/template_picker', 'init', [[
+            'templatesByProject' => $bundle,
+            'noPreview' => get_string('templatepreview_none', 'blerify'),
+        ]]);
 
         $mform->addElement('checkbox', 'completionissue', get_string('completionissue', 'blerify'));
         $mform->setDefault('completionissue', 1);
@@ -104,11 +131,17 @@ class mod_blerify_mod_form extends moodleform_mod {
      *
      * @param string $message The reason shown to the teacher.
      */
-    private function add_blocked_form($message) {
+    private function add_blocked_form($message, $detail = '') {
         $mform = $this->_form;
 
+        $body = html_writer::tag('strong', $message);
+        if ($detail !== '') {
+            $body .= html_writer::tag('div', s($detail),
+                ['class' => 'small mt-2', 'style' => 'font-family:monospace;']);
+        }
+
         $mform->addElement('static', 'noconfig', '',
-            html_writer::div($message, 'alert alert-danger'));
+            html_writer::div($body, 'alert alert-danger'));
 
         $mform->addElement('hidden', 'name', '');
         $mform->setType('name', PARAM_TEXT);

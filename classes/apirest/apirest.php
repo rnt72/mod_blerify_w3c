@@ -59,6 +59,41 @@ class apirest {
     }
 
     /**
+     * The projects this service account can issue credentials under.
+     *
+     * The roles endpoint reports what the token itself is allowed to do, so
+     * filtering by the issuing role keeps projects the account could not use
+     * out of the list instead of letting them fail later with a 403.
+     *
+     * @return array List of ['id' => string, 'name' => string], one per project.
+     * @throws \Exception On API error.
+     */
+    public function get_projects() {
+        $response = $this->client->get('/api/v1/iam/serviceAccounts/me/roles');
+
+        if (!$response || !is_array($response)) {
+            return [];
+        }
+
+        $projects = [];
+        foreach ($response as $role) {
+            if (empty($role->projectId) || ($role->name ?? '') !== 'credentials.api') {
+                continue;
+            }
+            $projects[$role->projectId] = !empty($role->projectName)
+                ? $role->projectName
+                : $role->projectId;
+        }
+
+        $list = [];
+        foreach ($projects as $id => $name) {
+            $list[] = ['id' => $id, 'name' => $name];
+        }
+
+        return $list;
+    }
+
+    /**
      * List the credential templates available in a project.
      *
      * @param string $projectid Blerify project UUID.
@@ -81,7 +116,8 @@ class apirest {
                 'id' => $template->id,
                 'title' => isset($template->title) ? $template->title : $template->id,
                 'description' => isset($template->description) ? $template->description : '',
-                'image' => (isset($template->image) && $template->image !== 'NO_IMAGE') ? $template->image : '',
+                'image' => (isset($template->image) && $template->image !== 'NO_IMAGE')
+                    ? $template->image : '',
             ];
         }
 

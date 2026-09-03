@@ -221,5 +221,75 @@ function xmldb_blerify_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026090102, 'blerify');
     }
 
+    if ($oldversion < 2026090200) {
+
+        // The project is now a single site-wide setting, so the per-course
+        // configuration page is gone. Carry an existing mapping over first, so
+        // a site that had one keeps working without being reconfigured.
+        $configs = new xmldb_table('blerify_configs');
+
+        if ($dbman->table_exists($configs)) {
+            if (trim((string) get_config('mod_blerify', 'project_id')) === '') {
+                $projects = $DB->get_fieldset_sql(
+                    'SELECT DISTINCT projectid FROM {blerify_configs} WHERE projectid <> ?', ['']);
+                if (count($projects) === 1) {
+                    set_config('project_id', reset($projects), 'mod_blerify');
+                }
+            }
+        }
+
+        $table = new xmldb_table('blerify');
+        $field = new xmldb_field('configid');
+
+        if ($dbman->field_exists($table, $field)) {
+            // The foreign key to blerify_configs owns an index on this column,
+            // and a column cannot be dropped while an index depends on it.
+            $key = new xmldb_key('configid_fk', XMLDB_KEY_FOREIGN,
+                ['configid'], 'blerify_configs', ['id']);
+            try {
+                $dbman->drop_key($table, $key);
+            } catch (Exception $e) {
+                // Installs that never had the key just move on to the index below.
+                debugging('Blerify: configid_fk not present, ' . $e->getMessage(), DEBUG_DEVELOPER);
+            }
+
+            $index = new xmldb_index('configid', XMLDB_INDEX_NOTUNIQUE, ['configid']);
+            if ($dbman->index_exists($table, $index)) {
+                $dbman->drop_index($table, $index);
+            }
+
+            $dbman->drop_field($table, $field);
+        }
+
+        if ($dbman->table_exists($configs)) {
+            $dbman->drop_table($configs);
+        }
+
+        upgrade_mod_savepoint(true, 2026090200, 'blerify');
+    }
+
+    if ($oldversion < 2026090300) {
+
+        // The project moved from a site-wide setting into each activity, so the
+        // teacher picks it next to the template. Existing activities keep issuing
+        // under whatever was configured before.
+        $table = new xmldb_table('blerify');
+        $field = new xmldb_field('projectid', XMLDB_TYPE_CHAR, '255', null,
+            XMLDB_NOTNULL, null, '', 'course');
+
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $legacy = trim((string) get_config('mod_blerify', 'project_id'));
+        if ($legacy !== '') {
+            $DB->execute("UPDATE {blerify} SET projectid = ? WHERE projectid = ''", [$legacy]);
+        }
+
+        unset_config('project_id', 'mod_blerify');
+
+        upgrade_mod_savepoint(true, 2026090300, 'blerify');
+    }
+
     return true;
 }

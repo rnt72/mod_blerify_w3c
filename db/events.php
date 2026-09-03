@@ -26,6 +26,12 @@ defined('MOODLE_INTERNAL') || die();
 
 $observers = [
     [
+        'eventname'   => '\core\event\user_graded',
+        'includefile' => '/mod/blerify/locallib.php',
+        'callback'    => 'blerify_user_graded_handler',
+        'internal'    => false,
+    ],
+    [
         'eventname'   => '\core\event\course_completed',
         'includefile' => '/mod/blerify/locallib.php',
         'callback'    => 'blerify_course_completed_handler',

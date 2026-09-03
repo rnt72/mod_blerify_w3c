@@ -24,12 +24,6 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$ADMIN->add('modsettings', new admin_externalpage(
-    'mod_blerify_manage',
-    get_string('manage_configs', 'blerify'),
-    new moodle_url('/mod/blerify/adminmanage.php')
-));
-
 require_once($CFG->dirroot . '/mod/blerify/classes/admin_setting_serviceaccount.php');
 
 $settings->add(
@@ -41,10 +35,3 @@ $settings->add(
     )
 );
 
-$settings->add(new admin_setting_configtext(
-    'mod_blerify/project_id',
-    get_string('setting_project_id', 'blerify'),
-    get_string('setting_project_id_desc', 'blerify'),
-    '',
-    PARAM_ALPHANUMEXT
-));

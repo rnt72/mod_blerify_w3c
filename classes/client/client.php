@@ -153,9 +153,22 @@ class client {
         }
 
         if ($httpcode >= 400) {
-            $decoded = json_decode($response, true);
-            $msg = isset($decoded['message']) ? $decoded['message'] : "HTTP $httpcode";
-            throw new \Exception("Blerify API error ($httpcode): $msg");
+            $decoded = json_decode((string)$response, true);
+            $msg = "HTTP $httpcode";
+            if (is_array($decoded)) {
+                if (!empty($decoded['message'])) {
+                    $msg .= " message: {$decoded['message']}";
+                }
+                if (!empty($decoded['error'])) {
+                    $msg .= " error: {$decoded['error']}";
+                }
+                if (isset($decoded['code'])) {
+                    $msg .= " code: {$decoded['code']}";
+                }
+            } else if (is_string($response) && trim((string)$response) !== '') {
+                $msg .= ' body: ' . trim((string)$response);
+            }
+            throw new \Exception("Blerify API error on " . strtoupper($method) . " $path: $msg");
         }
 
         if ($response === false || $response === null || $response === '') {
@@ -212,7 +225,19 @@ class client {
         $httpcode = $authcurl->get_info()['http_code'] ?? 0;
 
         if ($httpcode !== 200) {
-            throw new \Exception("Failed to get access token. HTTP $httpcode");
+            $detail = trim((string)$response);
+            if ($detail !== '') {
+                $decoded = json_decode($detail, true);
+                if (is_array($decoded)) {
+                    $detail = implode(' ', array_filter([
+                        !empty($decoded['error']) ? "error: {$decoded['error']}" : '',
+                        !empty($decoded['error_description']) ? "desc: {$decoded['error_description']}" : '',
+                        !empty($decoded['message']) ? "message: {$decoded['message']}" : '',
+                    ]));
+                }
+                $detail = ' ' . \core_text::substr($detail, 0, 300);
+            }
+            throw new \Exception("Failed to get access token. HTTP $httpcode." . $detail);
         }
 
         $tokendata = json_decode($response, true);

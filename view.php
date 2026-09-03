@@ -54,7 +54,7 @@ $viewurl = new moodle_url('/mod/blerify/view.php', ['id' => $cm->id]);
 if (has_capability('mod/blerify:manage', $context) && in_array($action, ['issue', 'retry'], true)) {
     require_sesskey();
 
-    if (blerify_get_project_id($course->id) === '') {
+    if (empty($blerify->projectid)) {
         redirect($viewurl, get_string('error_no_project_id', 'blerify'), null,
             \core\output\notification::NOTIFY_ERROR);
     }
@@ -120,7 +120,7 @@ if (has_capability('mod/blerify:manage', $context)) {
 
     $templatedata = [
         'activityname' => format_string($blerify->name),
-        'projectid' => blerify_get_project_id($course->id) ?: '-',
+        'projectid' => $blerify->projectid ?: '-',
         'templatename' => $blerify->templatename ?: $blerify->templateid,
         'passgrade' => $blerify->passgrade,
         'hascredentials' => !empty($allcredentials),
@@ -204,6 +204,8 @@ if (has_capability('mod/blerify:manage', $context)) {
     }
 
     if ($templatedata['is_ready']) {
+        $templatedata['thumbnail_url'] = (new moodle_url('/mod/blerify/pdf.php',
+            ['id' => $cm->id, 'asset' => 'thumbnail']))->out(false);
         $templatedata['pdf_url'] = (new moodle_url('/mod/blerify/pdf.php',
             ['id' => $cm->id]))->out(false);
         $templatedata['download_url'] = (new moodle_url('/mod/blerify/pdf.php',

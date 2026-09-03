@@ -60,18 +60,21 @@
                     {{/is_claimed}}
                 </div>
 
-                <div class="mb-3" style="border:1px solid #dee2e6;border-radius:8px;overflow:hidden;">
-                    <object data="{{ pdf_url }}" type="application/pdf" width="100%" height="620">
-                        <div class="p-4 text-center">
-                            <p>{{#str}}pdf_inline_unavailable, blerify{{/str}}</p>
-                            <a href="{{ pdf_url }}" target="_blank" rel="noopener" class="btn btn-outline-primary">
-                                {{#str}}pdf_open, blerify{{/str}}
-                            </a>
-                        </div>
-                    </object>
+                {{!
+                    The credential is shown as the thumbnail image the API renders,
+                    not as an embedded PDF: most mobile browsers refuse to render
+                    <object type="application/pdf"> inline, and learners reach this
+                    page from their phone to scan the wallet QR.
+                }}
+                <div class="mb-3 text-center" style="border:1px solid #dee2e6;border-radius:8px;overflow:hidden;">
+                    <img src="{{ thumbnail_url }}" alt="{{ activityname }}"
+                         style="display:block;width:100%;max-width:920px;height:auto;margin:0 auto;" />
                 </div>
 
                 <div class="d-flex flex-wrap justify-content-center" style="gap:12px;">
+                    <a href="{{ pdf_url }}" target="_blank" rel="noopener" class="btn btn-outline-secondary">
+                        {{#str}}pdf_open, blerify{{/str}}
+                    </a>
                     <a href="{{ download_url }}" class="btn btn-outline-primary">
                         {{#str}}pdf_download, blerify{{/str}}
                     </a>

@@ -228,15 +228,11 @@ class credentials {
      * @throws \moodle_exception When no project is configured anywhere.
      */
     private function get_project_id($blerifyrecord) {
-        global $CFG;
-        require_once($CFG->dirroot . '/mod/blerify/locallib.php');
-
-        $projectid = blerify_get_project_id($blerifyrecord->course);
-        if ($projectid === '') {
+        if (empty($blerifyrecord->projectid)) {
             throw new \moodle_exception('error_no_project_id', 'blerify');
         }
 
-        return $projectid;
+        return $blerifyrecord->projectid;
     }
 
     private function get_issue_lock($blerifyid, $userid) {

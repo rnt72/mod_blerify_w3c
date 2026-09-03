@@ -43,7 +43,6 @@ $string['projectid'] = 'Project ID';
 $string['projectid_help'] = 'UUID of the Blerify project for this certificate';
 $string['templateid'] = 'Template ID';
 $string['templateid_help'] = 'UUID of the Blerify credential template';
-$string['projectid_placeholder'] = 'e.g. 60f1a2b3-c4d5-6e7f-8a9b-0c1d2e3f4a5b';
 $string['completionissue'] = 'Issue on course completion';
 $string['completionissue_help'] = 'Automatically issue a certificate when the student completes the course';
 
@@ -56,7 +55,7 @@ $string['nocertificates'] = 'There are no Blerify certificate activities in this
 $string['indexheader'] = 'Blerify Certificates in: {$a}';
 
 // Student view.
-$string['certificate_processing'] = 'Your certificate is being processed. Please check back later.';
+$string['certificate_processing'] = 'We are generating your certificate. This page will refresh on its own in a few seconds.';
 $string['certificate_error'] = 'There was an error issuing your certificate. Please contact your instructor.';
 
 // Teacher view.
@@ -93,21 +92,6 @@ $string['error_not_configured'] = 'Blerify plugin is not properly configured. Pl
 $string['error_api_call'] = 'Error communicating with Blerify API: {$a}';
 
 // Admin config management.
-$string['manage_configs'] = 'Manage Blerify Configs';
-$string['add_config'] = 'Add certificate configuration';
-$string['edit_config'] = 'Edit certificate configuration';
-$string['config_name'] = 'Configuration name';
-$string['config_name_placeholder'] = 'e.g. Diploma Course 2024';
-$string['config_saved'] = 'Certificate configuration saved successfully.';
-$string['config_deleted'] = 'Certificate configuration deleted.';
-$string['config_delete_confirm'] = 'Are you sure you want to delete this configuration?';
-$string['existing_configs'] = 'Existing configurations';
-$string['no_configs'] = 'No certificate configurations have been created yet.';
-$string['error_no_config_for_course'] = 'No Blerify certificate configuration exists for this course. Please ask the administrator to configure one.';
-$string['error_course_not_found'] = 'The selected course was not found.';
-$string['error_course_already_configured'] = 'This course already has a Blerify certificate configuration.';
-$string['error_invalid_uuid'] = 'Project ID and Template ID must be valid UUIDs.';
-$string['unknowncourse'] = 'Unknown course';
 
 // Manual issuance.
 $string['issue_credentials'] = 'Enable Credentials';
@@ -159,7 +143,6 @@ $string['certificate_threshold'] = 'You need a course grade of at least';
 $string['certificate_current_grade'] = 'Your current grade:';
 $string['pdf_download'] = 'Download PDF';
 $string['pdf_open'] = 'Open the PDF';
-$string['pdf_inline_unavailable'] = 'Your browser cannot display the PDF inline.';
 $string['claim_btn'] = 'Claim my credential';
 $string['claim_scan_prompt'] = 'Scan this code with the Blerify wallet to claim your credential.';
 $string['claim_or_open_link'] = 'Already on your phone?';
@@ -183,6 +166,10 @@ $string['privacy:metadata:blerify_api'] = 'Data sent to the Blerify platform to 
 $string['privacy:metadata:blerify_api:email'] = 'The email address the credential is issued to';
 $string['privacy:metadata:blerify_api:fullname'] = 'The name rendered into the credential';
 
-$string['setting_project_id'] = 'Project ID';
-$string['setting_project_id_desc'] = 'The Blerify project credentials are issued under. Every course uses this project unless a per-course override is configured. Find it in the Blerify panel URL: /projects/<PROJECT-ID>/emission';
-$string['error_no_project_id'] = 'No Blerify project is configured. Ask the administrator to set the Project ID in the plugin settings.';
+$string['error_no_project_id'] = 'This activity has no Blerify project selected. Edit its settings and pick one.';
+
+$string['projecttoissue'] = 'Project';
+$string['projecttoissue_help'] = 'The Blerify project this certificate is issued under. Only projects the service account can issue credentials for are listed. The templates below belong to the project selected here.';
+$string['templatepreview'] = 'Preview';
+$string['templatepreview_none'] = 'This template has no preview image in Blerify.';
+$string['error_no_projects'] = 'The service account has no project with credential issuing permission. Check the configuration in Blerify.';

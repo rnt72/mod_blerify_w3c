@@ -42,7 +42,6 @@ $string['projectid'] = 'ID de Proyecto';
 $string['projectid_help'] = 'UUID del proyecto Blerify para este certificado';
 $string['templateid'] = 'ID de Plantilla';
 $string['templateid_help'] = 'UUID de la plantilla de credencial Blerify';
-$string['projectid_placeholder'] = 'ej. 60f1a2b3-c4d5-6e7f-8a9b-0c1d2e3f4a5b';
 $string['completionissue'] = 'Emitir al completar el curso';
 $string['completionissue_help'] = 'Emitir automáticamente un certificado cuando el estudiante complete el curso';
 
@@ -55,7 +54,7 @@ $string['nocertificates'] = 'No hay actividades de certificado Blerify en este c
 $string['indexheader'] = 'Certificados Blerify en: {$a}';
 
 // Student view.
-$string['certificate_processing'] = 'Tu certificado está siendo procesado. Por favor, vuelve a consultar más tarde.';
+$string['certificate_processing'] = 'Estamos generando tu certificado. Esta página se actualizará sola en unos segundos.';
 $string['certificate_error'] = 'Hubo un error al emitir tu certificado. Por favor, contacta a tu instructor.';
 
 // Teacher view.
@@ -84,20 +83,6 @@ $string['error_not_configured'] = 'El plugin Blerify no está configurado correc
 $string['error_api_call'] = 'Error al comunicarse con la API de Blerify: {$a}';
 
 // Admin config management.
-$string['manage_configs'] = 'Gestionar Configuraciones Blerify';
-$string['add_config'] = 'Agregar configuración de certificado';
-$string['edit_config'] = 'Editar configuración de certificado';
-$string['config_name'] = 'Nombre de la configuración';
-$string['config_name_placeholder'] = 'ej. Diploma Curso 2024';
-$string['config_saved'] = 'Configuración de certificado guardada exitosamente.';
-$string['config_deleted'] = 'Configuración de certificado eliminada.';
-$string['config_delete_confirm'] = '¿Estás seguro de que deseas eliminar esta configuración?';
-$string['existing_configs'] = 'Configuraciones existentes';
-$string['no_configs'] = 'Aún no se han creado configuraciones de certificado.';
-$string['error_no_config_for_course'] = 'No existe una configuración de certificado Blerify para este curso. Por favor, pide al administrador que configure una.';
-$string['error_course_not_found'] = 'El curso seleccionado no fue encontrado.';
-$string['error_course_already_configured'] = 'Este curso ya tiene una configuración de certificado Blerify.';
-$string['unknowncourse'] = 'Curso desconocido';
 
 // Manual issuance.
 $string['issue_credentials'] = 'Habilitar Credenciales';
@@ -149,7 +134,6 @@ $string['certificate_threshold'] = 'Necesitas una nota del curso de al menos';
 $string['certificate_current_grade'] = 'Tu nota actual:';
 $string['pdf_download'] = 'Descargar PDF';
 $string['pdf_open'] = 'Abrir el PDF';
-$string['pdf_inline_unavailable'] = 'Tu navegador no puede mostrar el PDF aqui.';
 $string['claim_btn'] = 'Reclamar mi credencial';
 $string['claim_scan_prompt'] = 'Escanea este codigo con la billetera Blerify para reclamar tu credencial.';
 $string['claim_or_open_link'] = 'Ya estas en tu celular?';
@@ -173,6 +157,10 @@ $string['privacy:metadata:blerify_api'] = 'Datos enviados a la plataforma Blerif
 $string['privacy:metadata:blerify_api:email'] = 'El correo al que se emite la credencial';
 $string['privacy:metadata:blerify_api:fullname'] = 'El nombre que se imprime en la credencial';
 
-$string['setting_project_id'] = 'ID de proyecto';
-$string['setting_project_id_desc'] = 'Proyecto de Blerify bajo el que se emiten las credenciales. Todos los cursos usan este proyecto, salvo que se configure una excepcion por curso. Lo encuentras en la URL del panel de Blerify: /projects/<PROJECT-ID>/emission';
-$string['error_no_project_id'] = 'No hay ningun proyecto de Blerify configurado. Pide al administrador que indique el ID de proyecto en los ajustes del plugin.';
+$string['error_no_project_id'] = 'Esta actividad no tiene ningun proyecto de Blerify seleccionado. Edita sus ajustes y elige uno.';
+
+$string['projecttoissue'] = 'Proyecto';
+$string['projecttoissue_help'] = 'Proyecto de Blerify bajo el que se emite este certificado. Solo aparecen los proyectos en los que la cuenta de servicio puede emitir credenciales. Las plantillas de abajo pertenecen al proyecto que elijas aqui.';
+$string['templatepreview'] = 'Vista previa';
+$string['templatepreview_none'] = 'Esta plantilla no tiene imagen de vista previa en Blerify.';
+$string['error_no_projects'] = 'La cuenta de servicio no tiene ningun proyecto con permiso de emision. Revisa la configuracion en Blerify.';

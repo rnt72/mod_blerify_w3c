@@ -38,7 +38,7 @@ function blerify_add_instance($data, $mform = null) {
     $data->timemodified = time();
     $data->completionissue = isset($data->completionissue) ? $data->completionissue : 1;
     $data->passgrade = isset($data->passgrade) ? (int)$data->passgrade : 70;
-    $data->templatename = blerify_resolve_template_name($data->course, $data->templateid);
+    $data->templatename = blerify_resolve_template_name($data->projectid, $data->templateid);
 
     $data->id = $DB->insert_record('blerify', $data);
 
@@ -59,7 +59,7 @@ function blerify_update_instance($data, $mform = null) {
     $data->timemodified = time();
     $data->completionissue = isset($data->completionissue) ? $data->completionissue : 0;
     $data->passgrade = isset($data->passgrade) ? (int)$data->passgrade : 70;
-    $data->templatename = blerify_resolve_template_name($data->course, $data->templateid);
+    $data->templatename = blerify_resolve_template_name($data->projectid, $data->templateid);
 
     return $DB->update_record('blerify', $data);
 }
@@ -87,16 +87,15 @@ function blerify_delete_instance($id) {
  * Resolve the display title of a template, so the activity can show it without
  * calling the API on every page load.
  *
- * @param int $courseid The course the activity belongs to.
+ * @param string $projectid The project the template belongs to.
  * @param string $templateid The selected template UUID.
  * @return string The template title, or the id when it cannot be resolved.
  */
-function blerify_resolve_template_name($courseid, $templateid) {
+function blerify_resolve_template_name($projectid, $templateid) {
     global $CFG;
     require_once($CFG->dirroot . '/mod/blerify/locallib.php');
 
-    $projectid = blerify_get_project_id($courseid);
-    if ($projectid === '') {
+    if (empty($projectid)) {
         return $templateid;
     }
 

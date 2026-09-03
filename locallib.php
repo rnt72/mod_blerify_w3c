@@ -27,32 +27,57 @@ defined('MOODLE_INTERNAL') || die();
 use mod_blerify\local\credentials;
 
 /**
- * The Blerify project a course issues under.
+ * The projects the configured service account can issue under, cached briefly.
  *
- * Resolved in order of precedence: a per-course override, the project declared
- * inside the service account file, then the site-wide setting. The API needs a
- * project in every path, but it is the same one for the whole organization in
- * the normal case, so it is configured once next to the service account.
- *
- * @param int $courseid Course to resolve for, 0 to skip the per-course override.
- * @return string The project UUID, or '' when none is configured.
+ * @return array List of ['id' => string, 'name' => string].
+ * @throws \Exception When the list cannot be retrieved.
  */
-function blerify_get_project_id($courseid = 0) {
-    global $DB;
+function blerify_get_projects() {
+    // The cache is an optimisation, never a dependency: a store that is not
+    // available yet must not stop the activity form from being usable.
+    $cache = null;
+    try {
+        $cache = \cache::make('mod_blerify', 'templates');
+        $cached = $cache->get('projects');
+        if ($cached !== false) {
+            return $cached;
+        }
+    } catch (\Exception $e) {
+        debugging('Blerify: template cache unavailable: ' . $e->getMessage(), DEBUG_DEVELOPER);
+    }
 
-    if ($courseid) {
-        $override = $DB->get_field('blerify_configs', 'projectid', ['courseid' => $courseid]);
-        if (!empty($override)) {
-            return $override;
+    $projects = (new \mod_blerify\apirest\apirest(new \mod_blerify\client\client()))
+        ->get_projects();
+
+    if ($cache) {
+        $cache->set('projects', $projects);
+    }
+
+    return $projects;
+}
+
+/**
+ * Every project mapped to the templates it holds.
+ *
+ * Both selects in the activity form are filled from this in one go, so picking
+ * a project filters its templates in the browser without another round trip.
+ *
+ * @return array Project UUID => list of templates.
+ */
+function blerify_get_templates_by_project() {
+    $bundle = [];
+
+    foreach (blerify_get_projects() as $project) {
+        try {
+            $bundle[$project['id']] = blerify_get_templates($project['id']);
+        } catch (\Exception $e) {
+            debugging('Blerify: templates unavailable for project ' . $project['id'] .
+                ': ' . $e->getMessage(), DEBUG_DEVELOPER);
+            $bundle[$project['id']] = [];
         }
     }
 
-    $sa = \mod_blerify\local\service_account::get_decoded();
-    if (!empty($sa['project_id'])) {
-        return $sa['project_id'];
-    }
-
-    return trim((string) get_config('mod_blerify', 'project_id'));
+    return $bundle;
 }
 
 /**
@@ -150,6 +175,20 @@ function blerify_issue_for_qualified_user($courseid, $userid) {
 
         \mod_blerify\task\issue_credential::queue($record->id, $userid);
     }
+}
+
+/**
+ * Grade change handler: issues as soon as the learner reaches the threshold,
+ * without waiting for the course to be marked complete.
+ *
+ * @param \core\event\user_graded $event
+ */
+function blerify_user_graded_handler($event) {
+    if (empty($event->courseid) || empty($event->relateduserid)) {
+        return;
+    }
+
+    blerify_issue_for_qualified_user($event->courseid, $event->relateduserid);
 }
 
 /**
